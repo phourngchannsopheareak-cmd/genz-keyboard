@@ -48,32 +48,67 @@ body {
   font-size: 14px;
 }
 
-/* Live compose line: Khmer preview + the roman you are typing. */
-.ime-compose {
-  padding: 8px 14px 6px;
+/* iPhone-style prediction bar (one slim row above the keys). */
+.predict-bar {
+  height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
   border-top: 1px solid var(--border);
 }
 
-.ime-kh {
-  min-height: 30px;
-  font-family: var(--kh);
-  font-size: 22px;
-  line-height: 1.7;
-  color: var(--text);
-  display: flex;
-  align-items: center;
-}
-
-.ime-hint {
-  color: var(--muted);
-  font-size: 15px;
-}
-
-.ime-roman {
+.predict-roman {
+  flex: 0 0 auto;
+  max-width: 32%;
   font-size: 12px;
   color: var(--muted);
-  letter-spacing: 0.05em;
-  min-height: 15px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.predict-hint {
+  flex: 1;
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.predict-chips {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.predict-bar .chip {
+  flex: 1;
+  min-width: 0;
+  height: 38px;
+  border-radius: 8px;
+}
+
+.predict-bar .chip + .chip {
+  border-left: 1px solid var(--border);
+}
+
+.predict-bar .chip-kh {
+  font-size: 18px;
+}
+
+.key-globe {
+  flex: 0 0 auto;
+  min-width: 42px;
+  font-size: 17px;
+}
+
+.key-globe::after {
+  content: none;
 }
 
 .key-globe {

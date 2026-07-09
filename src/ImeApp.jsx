@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { convert } from "./converter.js";
 import { suggest } from "./suggest.js";
 import { host } from "./host.js";
@@ -47,20 +47,27 @@ export default function ImeApp() {
 
   const custom = useMemo(loadCustom, []);
   const dict = useMemo(() => ({ ...baseDictionary, ...custom }), [custom]);
-  const { text } = useMemo(() => convert(buffer, dict), [buffer, dict]);
   const suggestions = useMemo(
     () => suggest(buffer, dict, learned),
     [buffer, dict, learned]
   );
 
+  // Keep a live copy of the buffer so the backspace repeat timer sees it.
+  const bufferRef = useRef("");
+  useEffect(() => {
+    bufferRef.current = buffer;
+  }, [buffer]);
+
   useEffect(() => host.onMock(setMock), []);
 
-  // Tell iOS how tall the keyboard content is (Android sizes itself natively).
+  // Tell iOS how tall the keyboard content is, measured from the bar + keys
+  // (not the root, which is stretched to fill whatever height iOS gave us).
   useEffect(() => {
-    const el = document.querySelector(".ime-root");
-    const h = el ? el.getBoundingClientRect().height : document.documentElement.scrollHeight;
-    host.reportHeight(h);
-  }, [page]);
+    const bar = document.querySelector(".predict-bar");
+    const kbd = document.querySelector(".keyboard");
+    const h = (bar ? bar.offsetHeight : 0) + (kbd ? kbd.offsetHeight : 0);
+    if (h) host.reportHeight(h);
+  }, [page, buffer]);
 
   function remember(typed, khmer) {
     const next = {
@@ -81,19 +88,24 @@ export default function ImeApp() {
   }
 
   function commitBuffer() {
-    if (!buffer) return false;
-    host.commit(convert(buffer, dict).text);
+    const b = bufferRef.current;
+    if (!b) return;
+    // Space / return accept the best suggestion (like iPhone), falling back to
+    // the letter-by-letter conversion only if there is no suggestion.
+    const top = suggest(b, dict, learned)[0];
+    const khmer = top ? top.khmer : convert(b, dict).text;
+    host.commit(khmer);
+    if (top && top.type === "match") remember(b.toLowerCase(), khmer);
     setBuffer("");
-    return true;
   }
 
   function onSpace() {
-    if (buffer) commitBuffer();
+    if (bufferRef.current) commitBuffer();
     else host.space();
   }
 
   function onBackspace() {
-    if (buffer) setBuffer((b) => b.slice(0, -1));
+    if (bufferRef.current) setBuffer((b) => b.slice(0, -1));
     else host.backspace();
   }
 
@@ -106,6 +118,28 @@ export default function ImeApp() {
     host.commit(s.khmer);
     if (s.type === "match") remember(buffer.toLowerCase(), s.khmer);
     setBuffer("");
+  }
+
+  // Hold-to-repeat for the backspace key. Window listeners make it stop no
+  // matter where the finger lifts.
+  const holdTimer = useRef(null);
+  const holdInterval = useRef(null);
+  function makeStop() {
+    return function stop() {
+      clearTimeout(holdTimer.current);
+      clearInterval(holdInterval.current);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+    };
+  }
+  function startBackspace() {
+    onBackspace();
+    holdTimer.current = setTimeout(() => {
+      holdInterval.current = setInterval(onBackspace, 55);
+    }, 400);
+    const stop = makeStop();
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
   }
 
   const rows = page === "letters" ? LETTER_ROWS : SYMBOL_ROWS;
@@ -139,27 +173,27 @@ export default function ImeApp() {
         </div>
       )}
 
-      <div className="ime-compose">
-        <div className="ime-kh">
-          {text ? text : <span className="ime-hint">វាយ Khmerlish…</span>}
+      {/* iPhone-style prediction bar: what you typed + Khmer candidates. */}
+      <div className="predict-bar">
+        {buffer ? (
+          <span className="predict-roman">{buffer}</span>
+        ) : (
+          <span className="predict-hint">វាយ Khmerlish ។ ឧ. jg tv pteas</span>
+        )}
+        <div className="predict-chips">
+          {suggestions.map((s, idx) => (
+            <button
+              key={s.khmer + idx}
+              className={`chip ${s.type === "guess" ? "chip-guess" : ""}`}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                acceptSuggestion(s);
+              }}
+            >
+              <span className="chip-kh">{s.khmer}</span>
+            </button>
+          ))}
         </div>
-        <div className="ime-roman">{buffer || " "}</div>
-      </div>
-
-      <div className="suggest-strip">
-        {suggestions.map((s, idx) => (
-          <button
-            key={s.khmer + idx}
-            className={`chip ${s.type === "guess" ? "chip-guess" : ""}`}
-            onPointerDown={(e) => {
-              e.preventDefault();
-              acceptSuggestion(s);
-            }}
-          >
-            <span className="chip-kh">{s.khmer}</span>
-            <span className="chip-roman">{s.key}</span>
-          </button>
-        ))}
       </div>
 
       <div className="keyboard">
@@ -190,7 +224,7 @@ export default function ImeApp() {
             className="key key-special key-wide"
             onPointerDown={(e) => {
               e.preventDefault();
-              onBackspace();
+              startBackspace();
             }}
           >
             ⌫

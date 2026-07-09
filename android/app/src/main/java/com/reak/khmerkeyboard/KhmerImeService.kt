@@ -35,11 +35,10 @@ class KhmerImeService : InputMethodService() {
         web.addJavascriptInterface(Bridge(), "AndroidIME")
 
         // A keyboard view has no natural height, so the WebView would collapse
-        // to zero and show nothing. Give it a real height: at least enough for
-        // the whole keyboard, and about half the screen on taller phones.
+        // to zero and show nothing. Give it a fixed height that matches the web
+        // content (prediction bar + keyboard), close to a real phone keyboard.
         val dm = resources.displayMetrics
-        val minHeight = (340 * dm.density).toInt()
-        val height = maxOf((dm.heightPixels * 0.5f).toInt(), minHeight)
+        val height = (300 * dm.density).toInt()
         web.layoutParams = ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             height
