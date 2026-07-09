@@ -1,0 +1,19 @@
+# web
+node_modules/
+dist/
+*.log
+
+# android build output
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/captures/
+.gradle/
+
+# generated: CI copies the web build in here
+android/app/src/main/assets/keyboard/
+
+# os
+.DS_Store
+Thumbs.db

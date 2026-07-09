@@ -1,0 +1,87 @@
+/* IME mode: fills the WebView, keyboard anchored to the bottom. */
+html,
+body,
+#ime-root {
+  height: 100%;
+}
+
+body {
+  background: #201d19;
+}
+
+.ime-root {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background: #201d19;
+}
+
+/* Browser-only mock target, hidden inside the real Android app. */
+.ime-target {
+  margin: 10px 10px 0;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.ime-target-label {
+  font-size: 10.5px;
+  color: var(--muted);
+  letter-spacing: 0.03em;
+}
+
+.ime-target-text {
+  margin-top: 5px;
+  min-height: 26px;
+  font-family: var(--kh);
+  font-size: 18px;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ime-target-empty {
+  color: var(--muted);
+  font-family: var(--ui);
+  font-size: 14px;
+}
+
+/* Live compose line: Khmer preview + the roman you are typing. */
+.ime-compose {
+  padding: 8px 14px 6px;
+  border-top: 1px solid var(--border);
+}
+
+.ime-kh {
+  min-height: 30px;
+  font-family: var(--kh);
+  font-size: 22px;
+  line-height: 1.7;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+}
+
+.ime-hint {
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.ime-roman {
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.05em;
+  min-height: 15px;
+}
+
+.key-globe {
+  flex: 0 0 auto;
+  min-width: 42px;
+  font-size: 17px;
+}
+
+.key-globe::after {
+  content: none;
+}
