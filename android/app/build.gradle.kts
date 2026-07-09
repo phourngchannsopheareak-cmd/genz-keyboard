@@ -15,9 +15,24 @@ android {
         versionName = "1.0"
     }
 
+    // One stable signing key (created and committed once by CI) so every
+    // update installs over the previous one without uninstalling.
+    signingConfigs {
+        create("release") {
+            val ks = file("genz.keystore")
+            if (ks.exists()) {
+                storeFile = ks
+                storePassword = "genzkeystore"
+                keyAlias = "genz"
+                keyPassword = "genzkeystore"
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 

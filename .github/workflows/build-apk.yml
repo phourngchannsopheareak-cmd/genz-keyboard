@@ -37,6 +37,27 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      - name: Ensure a stable signing key exists
+        run: |
+          if [ ! -f android/app/genz.keystore ]; then
+            keytool -genkeypair -v \
+              -keystore android/app/genz.keystore \
+              -alias genz \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass genzkeystore -keypass genzkeystore \
+              -dname "CN=Genz Keyboard, OU=404 Studio, O=404 Studio, L=Phnom Penh, C=KH"
+            echo "NEW_KEYSTORE=1" >> "$GITHUB_ENV"
+          fi
+
+      - name: Save the key back to the repo (first time only)
+        if: env.NEW_KEYSTORE == '1'
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add -f android/app/genz.keystore
+          git commit -m "Add Genz Keyboard signing key [skip ci]"
+          git push
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
@@ -48,20 +69,23 @@ jobs:
         with:
           gradle-version: "8.7"
 
-      - name: Build debug APK
+      - name: Build signed APK
         working-directory: android
-        run: gradle assembleDebug --no-daemon --stacktrace
+        run: gradle assembleRelease --no-daemon --stacktrace
+
+      - name: Name the APK
+        run: cp android/app/build/outputs/apk/release/app-release.apk genz-keyboard.apk
 
       - name: Upload APK as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: khmer-slang-keyboard
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: genz-keyboard
+          path: genz-keyboard.apk
 
       - name: Publish APK to the "latest" release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
           name: Genz Keyboard (latest)
-          body: Tap app-debug.apk below on your Android phone to install.
-          files: android/app/build/outputs/apk/debug/app-debug.apk
+          body: Tap genz-keyboard.apk below on your Android phone to install.
+          files: genz-keyboard.apk
