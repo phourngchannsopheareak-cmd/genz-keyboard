@@ -1,19 +1,10 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import { resolve } from "path";
 
+// Demo site build (index.html). The Android keyboard page is built separately
+// as a single self-contained file by vite.ime.config.js.
 export default defineConfig({
-  plugins: [react()],
-  // Relative asset paths so the built files also work from file:// inside
-  // the Android WebView, not just from a web server root.
   base: "./",
+  plugins: [react()],
   server: { port: 5190 },
-  build: {
-    rollupOptions: {
-      input: {
-        main: resolve(__dirname, "index.html"),
-        ime: resolve(__dirname, "ime.html"),
-      },
-    },
-  },
 });

@@ -25,6 +25,12 @@ class KhmerImeService : InputMethodService() {
         val web = WebView(this)
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true // localStorage for custom + learned words
+        web.settings.allowFileAccess = true
+        web.settings.allowContentAccess = true
+        @Suppress("DEPRECATION")
+        web.settings.allowFileAccessFromFileURLs = true
+        @Suppress("DEPRECATION")
+        web.settings.allowUniversalAccessFromFileURLs = true
         web.setBackgroundColor(0xFF201D19.toInt())
         web.addJavascriptInterface(Bridge(), "AndroidIME")
 
