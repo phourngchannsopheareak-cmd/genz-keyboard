@@ -1,0 +1,76 @@
+name: Build iOS IPA
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build web keyboard
+        run: |
+          npm install
+          npm run build
+
+      - name: Copy keyboard page into iOS resources
+        run: |
+          rm -rf ios/Keyboard/Web
+          mkdir -p ios/Keyboard/Web
+          cp dist/ime.html ios/Keyboard/Web/
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Build unsigned app
+        working-directory: ios
+        run: |
+          xcodebuild \
+            -project GenzKeyboard.xcodeproj \
+            -scheme GenzKeyboard \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Package into an .ipa
+        working-directory: ios
+        run: |
+          APP=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
+          echo "App bundle: $APP"
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP" Payload/
+          zip -r -y ../GenzKeyboard.ipa Payload >/dev/null
+          ls -lh ../GenzKeyboard.ipa
+
+      - name: Upload IPA as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: genz-keyboard-ios
+          path: GenzKeyboard.ipa
+
+      - name: Publish IPA to the "ios-latest" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ios-latest
+          name: Genz Keyboard for iPhone (latest)
+          body: Unsigned .ipa. Install it with Sideloadly using your own Apple ID.
+          files: GenzKeyboard.ipa

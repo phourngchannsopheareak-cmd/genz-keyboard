@@ -55,6 +55,13 @@ export default function ImeApp() {
 
   useEffect(() => host.onMock(setMock), []);
 
+  // Tell iOS how tall the keyboard content is (Android sizes itself natively).
+  useEffect(() => {
+    const el = document.querySelector(".ime-root");
+    const h = el ? el.getBoundingClientRect().height : document.documentElement.scrollHeight;
+    host.reportHeight(h);
+  }, [page]);
+
   function remember(typed, khmer) {
     const next = {
       picks: { ...learned.picks, [typed]: khmer },

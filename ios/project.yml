@@ -1,0 +1,39 @@
+name: GenzKeyboard
+options:
+  bundleIdPrefix: com.reak
+  deploymentTarget:
+    iOS: "14.0"
+settings:
+  base:
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGNING_ALLOWED: "NO"
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGN_IDENTITY: ""
+targets:
+  GenzKeyboard:
+    type: application
+    platform: iOS
+    sources:
+      - App
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.reak.genzkeyboard
+        INFOPLIST_FILE: App/Info.plist
+    dependencies:
+      - target: Keyboard
+        embed: true
+  Keyboard:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Keyboard
+        excludes:
+          - "Web/**"
+      - path: Keyboard/Web
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.reak.genzkeyboard.keyboard
+        INFOPLIST_FILE: Keyboard/Info.plist
