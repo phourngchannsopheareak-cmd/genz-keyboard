@@ -5,6 +5,7 @@ import android.inputmethodservice.InputMethodService
 import android.os.Handler
 import android.os.Looper
 import android.view.View
+import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -26,6 +27,19 @@ class KhmerImeService : InputMethodService() {
         web.settings.domStorageEnabled = true // localStorage for custom + learned words
         web.setBackgroundColor(0xFF201D19.toInt())
         web.addJavascriptInterface(Bridge(), "AndroidIME")
+
+        // A keyboard view has no natural height, so the WebView would collapse
+        // to zero and show nothing. Give it a real height: at least enough for
+        // the whole keyboard, and about half the screen on taller phones.
+        val dm = resources.displayMetrics
+        val minHeight = (340 * dm.density).toInt()
+        val height = maxOf((dm.heightPixels * 0.5f).toInt(), minHeight)
+        web.layoutParams = ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            height
+        )
+        web.minimumHeight = height
+
         web.loadUrl("file:///android_asset/keyboard/ime.html")
         return web
     }
