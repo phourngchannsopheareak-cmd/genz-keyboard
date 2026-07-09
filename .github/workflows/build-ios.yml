@@ -41,6 +41,7 @@ jobs:
       - name: Build unsigned app
         working-directory: ios
         run: |
+          set -o pipefail
           xcodebuild \
             -project GenzKeyboard.xcodeproj \
             -scheme GenzKeyboard \
@@ -48,7 +49,8 @@ jobs:
             -sdk iphoneos \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            build
+            ONLY_ACTIVE_ARCH=NO \
+            build 2>&1 | tee ../xcodebuild.log
 
       - name: Package into an .ipa
         working-directory: ios
@@ -74,3 +76,12 @@ jobs:
           name: Genz Keyboard for iPhone (latest)
           body: Unsigned .ipa. Install it with Sideloadly using your own Apple ID.
           files: GenzKeyboard.ipa
+
+      - name: Publish build log if the build failed
+        if: failure()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ios-log
+          name: iOS build log
+          body: Latest failed iOS build log (for debugging).
+          files: xcodebuild.log
