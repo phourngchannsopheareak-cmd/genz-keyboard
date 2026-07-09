@@ -53,7 +53,7 @@ class SetupActivity : Activity() {
             })
         }
 
-        text("Khmer Slang Keyboard", 24f, "#E8A93D", 0)
+        text("Genz Keyboard", 24f, "#E8A93D", 0)
         text("Type Khmerlish, get Khmer. Two steps to turn it on:", 15f, "#F2EDE4")
 
         button("1.  Turn on the keyboard") {

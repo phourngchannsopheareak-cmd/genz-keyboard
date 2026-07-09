@@ -168,14 +168,14 @@ export default function App() {
     <div className="stage">
       <div className="brand">
         <span className="brand-mark">404 STUDIO</span>
-        <span className="brand-sub">Khmer Slang Keyboard, web demo</span>
+        <span className="brand-sub">Genz Keyboard, web demo</span>
       </div>
 
       <div className="phone">
         <header className="phone-head">
           <div className="avatar">៤</div>
           <div className="head-meta">
-            <div className="head-name">Khmer Keyboard</div>
+            <div className="head-name">Genz Keyboard</div>
             <div className="head-status">typing demo</div>
           </div>
           <button className="head-btn" onClick={() => setShowWords(true)}>
