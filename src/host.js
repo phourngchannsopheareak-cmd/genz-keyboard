@@ -76,10 +76,12 @@ export const host = {
     else console.log("[host] switch keyboard");
   },
 
-  // iOS only: tell the native keyboard how tall the web content is so it can
-  // size the keyboard to fit. Android sets a fixed height on its side.
+  // Tell the native keyboard how tall the web content is so it fits any
+  // device (phone, tablet, iPad). Both platforms resize to this.
   reportHeight(px) {
-    if (ios) ios.postMessage({ action: "height", text: String(Math.ceil(px)) });
+    const v = String(Math.ceil(px));
+    if (ios) ios.postMessage({ action: "height", text: v });
+    else if (android && android.resize) android.resize(v);
   },
 
   // Browser-only: observe the mock target text.

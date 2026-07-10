@@ -19,10 +19,12 @@ import android.webkit.WebView
 class KhmerImeService : InputMethodService() {
 
     private val main = Handler(Looper.getMainLooper())
+    private var webView: WebView? = null
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreateInputView(): View {
         val web = WebView(this)
+        webView = web
         web.settings.javaScriptEnabled = true
         web.settings.domStorageEnabled = true // localStorage for custom + learned words
         web.settings.allowFileAccess = true
@@ -83,6 +85,25 @@ class KhmerImeService : InputMethodService() {
             main.post {
                 val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
                 imm.showInputMethodPicker()
+            }
+        }
+
+        // The web page reports its content height (in CSS px); resize the
+        // keyboard to fit it on any device.
+        @JavascriptInterface
+        fun resize(px: String) {
+            val cssPx = px.toFloatOrNull() ?: return
+            main.post {
+                val wv = webView ?: return@post
+                val h = (cssPx * resources.displayMetrics.density).toInt()
+                if (h <= 0) return@post
+                val lp = wv.layoutParams ?: ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, h
+                )
+                lp.height = h
+                wv.layoutParams = lp
+                wv.minimumHeight = h
+                wv.requestLayout()
             }
         }
     }

@@ -1,4 +1,7 @@
-/* IME mode: fills the WebView, keyboard anchored to the bottom. */
+/* IME mode: fills the WebView, keyboard anchored to the bottom.
+   Defaults to the light iPhone keyboard look; switches to a dark look on
+   dark-mode devices; scales up on tablets / iPad. */
+
 html,
 body,
 #ime-root {
@@ -6,7 +9,7 @@ body,
 }
 
 body {
-  background: #201d19;
+  background: #d1d4db;
 }
 
 .ime-root {
@@ -14,21 +17,21 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  background: #201d19;
+  background: #d1d4db;
 }
 
-/* Browser-only mock target, hidden inside the real Android app. */
+/* Browser-only mock target, hidden inside the real app. */
 .ime-target {
   margin: 10px 10px 0;
   padding: 10px 12px;
-  background: var(--panel);
-  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 12px;
 }
 
 .ime-target-label {
   font-size: 10.5px;
-  color: var(--muted);
+  color: #6c6c70;
   letter-spacing: 0.03em;
 }
 
@@ -37,13 +40,13 @@ body {
   min-height: 26px;
   font-family: var(--kh);
   font-size: 18px;
-  color: var(--text);
+  color: #1c1c1e;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .ime-target-empty {
-  color: var(--muted);
+  color: #8a8a8e;
   font-family: var(--ui);
   font-size: 14px;
 }
@@ -55,14 +58,14 @@ body {
   align-items: center;
   gap: 8px;
   padding: 0 8px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 .predict-roman {
   flex: 0 0 auto;
   max-width: 32%;
   font-size: 12px;
-  color: var(--muted);
+  color: #6c6c70;
   letter-spacing: 0.06em;
   white-space: nowrap;
   overflow: hidden;
@@ -72,7 +75,7 @@ body {
 .predict-hint {
   flex: 1;
   font-size: 13px;
-  color: var(--muted);
+  color: #8a8a8e;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -91,14 +94,78 @@ body {
   min-width: 0;
   height: 38px;
   border-radius: 8px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
 }
 
 .predict-bar .chip + .chip {
-  border-left: 1px solid var(--border);
+  border-left: 1px solid rgba(0, 0, 0, 0.14);
 }
 
 .predict-bar .chip-kh {
   font-size: 18px;
+  color: #1c1c1e;
+}
+
+.predict-bar .chip:active {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.predict-bar .chip-guess .chip-kh {
+  color: #b06a00;
+}
+
+/* ---- Keys, light iPhone theme (default) ---- */
+.ime-root .keyboard {
+  background: #d1d4db;
+}
+
+.ime-root .key-char {
+  background: #ffffff;
+  color: #1c1c1e;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+}
+
+.ime-root .key-char:active {
+  background: #b9bdc6;
+}
+
+.ime-root .key-char::after {
+  background: #ffffff;
+  color: #1c1c1e;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.28);
+}
+
+.ime-root .key-special {
+  background: #abafba;
+  color: #1c1c1e;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.22);
+}
+
+.ime-root .key-special:active {
+  background: #9296a1;
+}
+
+.ime-root .key-shift-on {
+  background: #ffffff;
+  color: #1c1c1e;
+}
+
+.ime-root .key-space {
+  background: #ffffff;
+  color: #6c6c70;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+}
+
+.ime-root .key-space:active {
+  background: #b9bdc6;
+}
+
+.ime-root .key-send {
+  background: var(--gold);
+  color: #141312;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
 }
 
 .key-globe {
@@ -111,12 +178,110 @@ body {
   content: none;
 }
 
-.key-globe {
-  flex: 0 0 auto;
-  min-width: 42px;
-  font-size: 17px;
+/* ---- Dark mode: brand dark keyboard ---- */
+@media (prefers-color-scheme: dark) {
+  body,
+  .ime-root,
+  .ime-root .keyboard {
+    background: #201d19;
+  }
+
+  .ime-target {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+  .ime-target-text {
+    color: #f2ede4;
+  }
+  .ime-target-empty {
+    color: #8a8578;
+  }
+
+  .predict-bar {
+    border-top-color: #2e2b26;
+  }
+  .predict-roman,
+  .predict-hint {
+    color: #8a8578;
+  }
+  .predict-bar .chip + .chip {
+    border-left-color: #2e2b26;
+  }
+  .predict-bar .chip-kh {
+    color: #f2ede4;
+  }
+  .predict-bar .chip:active {
+    background: rgba(255, 255, 255, 0.08);
+  }
+  .predict-bar .chip-guess .chip-kh {
+    color: var(--gold);
+  }
+
+  .ime-root .key-char {
+    background: #4a453d;
+    color: #f2ede4;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+  }
+  .ime-root .key-char:active {
+    background: #6a655c;
+  }
+  .ime-root .key-char::after {
+    background: #6a655c;
+    color: #f2ede4;
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.5);
+  }
+  .ime-root .key-special {
+    background: #302c26;
+    color: #f2ede4;
+  }
+  .ime-root .key-special:active {
+    background: #4a453d;
+  }
+  .ime-root .key-shift-on {
+    background: #f2ede4;
+    color: #141312;
+  }
+  .ime-root .key-space {
+    background: #4a453d;
+    color: #8a8578;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+  }
+  .ime-root .key-space:active {
+    background: #6a655c;
+  }
 }
 
-.key-globe::after {
-  content: none;
+/* ---- Tablets / iPad: larger keys ---- */
+@media (min-width: 600px) {
+  .ime-root .predict-bar {
+    height: 56px;
+  }
+  .ime-root .predict-bar .chip-kh {
+    font-size: 22px;
+  }
+  .ime-root .keyboard {
+    gap: 12px;
+    padding: 10px 10px 16px;
+  }
+  .ime-root .krow {
+    gap: 8px;
+  }
+  .ime-root .key {
+    height: 56px;
+    font-size: 23px;
+  }
+  .ime-root .key-char::after {
+    height: 62px;
+    font-size: 32px;
+  }
+}
+
+@media (min-width: 900px) {
+  .ime-root .key {
+    height: 64px;
+    font-size: 26px;
+  }
+  .ime-root .predict-bar {
+    height: 62px;
+  }
 }

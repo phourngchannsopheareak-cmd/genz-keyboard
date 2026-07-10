@@ -63,7 +63,7 @@ class KeyboardViewController: UIInputViewController, WKScriptMessageHandler, WKN
             advanceToNextInputMode()
         case "height":
             if let s = body["text"] as? String, let v = Double(s) {
-                let clamped = CGFloat(min(max(v, 240), 380))
+                let clamped = CGFloat(min(max(v, 220), 560))
                 heightConstraint.constant = clamped
             }
         default:
