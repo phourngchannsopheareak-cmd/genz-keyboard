@@ -78,6 +78,7 @@ jobs:
           tag_name: ios-latest
           name: Genz Keyboard for iPhone (latest)
           body: Unsigned .ipa. Install it with Sideloadly using your own Apple ID.
+          prerelease: true
           files: GenzKeyboard.ipa
 
       - name: Publish build log if the build failed
