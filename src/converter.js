@@ -5,8 +5,10 @@
 // Pipeline (per the build spec):
 // 1. Longest-phrase dictionary match, up to 4 words.
 // 2. Glued-prefix peeling: otniyeay -> ot + niyeay (prefix must itself be in the dictionary).
-// 3. Letter-by-letter guess as a last resort, marked low confidence.
+// 3. Spell the word from Khmer orthography rules, marked low confidence.
 // 4. Adjacent Khmer words join with no space.
+
+import { spell } from "./spell.js";
 
 const MAX_PHRASE = 4;
 
@@ -144,8 +146,8 @@ export function convert(input, dict) {
       continue;
     }
 
-    // 3. Letter-by-letter guess.
-    push(tokens, { text: guess(word), type: "guess" });
+    // 3. Spell it from the rules, falling back to the letter map.
+    push(tokens, { text: spell(word, 1)[0] || guess(word), type: "guess" });
   }
 
   return { text: tokens.map((t) => t.text).join(""), tokens };

@@ -3,6 +3,8 @@ import Foundation
 /// Native port of the web converter (src/converter.js) and suggestion engine
 /// (src/suggest.js). The dictionary ships as dictionary.json in the bundle's
 /// Web/ folder (copied there by CI from src/dictionary.json).
+///
+/// Spelling of unknown words lives in Speller.swift (a port of src/spell.js).
 final class Engine {
 
     static let shared = Engine()
@@ -12,16 +14,21 @@ final class Engine {
     // Learned ranking, stored on-device.
     private var picks: [String: String]
     private var words: [String: Int]
+    /// Words the user taught by tapping a spelling chip. Merged over the
+    /// bundled dictionary, so a word only ever has to be spelled once.
+    private var custom: [String: String]
     private let defaults = UserDefaults.standard
 
     private init() {
         picks = (defaults.dictionary(forKey: "genz-picks") as? [String: String]) ?? [:]
         words = (defaults.dictionary(forKey: "genz-words") as? [String: Int]) ?? [:]
+        custom = (defaults.dictionary(forKey: "genz-custom") as? [String: String]) ?? [:]
         if let url = Bundle.main.url(forResource: "dictionary", withExtension: "json", subdirectory: "Web"),
            let data = try? Data(contentsOf: url),
            let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: String] {
             dict = obj
         }
+        dict.merge(custom) { _, mine in mine }
     }
 
     // MARK: - Conversion
@@ -120,7 +127,7 @@ final class Engine {
             if let peeled = peel(word) {
                 out += peeled
             } else {
-                out += guess(word)
+                out += Speller.spell(word, limit: 1).first ?? guess(word)
             }
         }
         return out
@@ -138,11 +145,20 @@ final class Engine {
         "ដាក់": 4, "ស្ដាប់": 4,
     ]
 
+    enum Kind {
+        case match  // straight out of the dictionary
+        case spell  // built from the orthography rules; tapping it teaches it
+        case guess  // letter-by-letter fallback for a word with no vowel
+    }
+
     struct Suggestion {
         let key: String
         let khmer: String
-        let isGuess: Bool
+        let kind: Kind
         let replaceWords: Int
+
+        /// Anything not from the dictionary is shown low-confidence (gold).
+        var isGuess: Bool { kind != .match }
     }
 
     func suggest(_ context: String, limit: Int = 3) -> [Suggestion] {
@@ -173,12 +189,37 @@ final class Engine {
 
         let ranked = best.sorted { $0.value.score > $1.value.score }.prefix(limit)
         var out = ranked.map {
-            Suggestion(key: $0.value.key, khmer: $0.key, isGuess: false, replaceWords: $0.value.n)
+            Suggestion(key: $0.value.key, khmer: $0.key, kind: .match, replaceWords: $0.value.n)
         }
-        if out.isEmpty, let last = wordsArr.last {
-            out = [Suggestion(key: last, khmer: guess(last), isGuess: true, replaceWords: 1)]
+
+        guard let last = wordsArr.last else { return out }
+
+        // Top up the strip with rule-based spellings of the last word. Tapping
+        // one teaches it, so a word only has to be spelled once.
+        var taken = Set(out.map { $0.khmer })
+        for khmer in Speller.spell(last, limit: limit) {
+            if out.count >= limit { break }
+            guard taken.insert(khmer).inserted else { continue }
+            out.append(Suggestion(key: last, khmer: khmer, kind: .spell, replaceWords: 1))
+        }
+
+        // A word with no vowel at all (xyz) has no syllable to spell.
+        if out.isEmpty {
+            out = [Suggestion(key: last, khmer: guess(last), kind: .guess, replaceWords: 1)]
         }
         return out
+    }
+
+    /// Accepting a chip: record the pick, and save a spelling as a new word.
+    func accept(typed: String, suggestion s: Suggestion) {
+        let key = typed.lowercased()
+        if s.kind == .guess { return }
+        if s.kind == .spell, key.range(of: "^[a-z']+$", options: .regularExpression) != nil {
+            custom[key] = s.khmer
+            dict[key] = s.khmer
+            defaults.set(custom, forKey: "genz-custom")
+        }
+        learn(typed: key, khmer: s.khmer)
     }
 
     func learn(typed: String, khmer: String) {

@@ -1,6 +1,11 @@
 // Suggestion engine for the strip above the keyboard.
 // suggest(context, dict, learned) -> up to `limit` candidates:
-//   [{ key, khmer, type, replaceWords }] with type "match" | "guess"
+//   [{ key, khmer, type, replaceWords }] with type "match" | "spell"
+//
+// When the dictionary cannot fill the strip, the speller adds candidate
+// spellings for the last word. Khmer writes each consonant sound in two
+// series, so the rules cannot always pick one; the user taps the right chip
+// and it is saved, which is how the dictionary grows.
 //
 // `context` is the tail of the typing buffer (up to the last 3 words, no
 // trailing space). Phrase entries are matched against multi-word tails, so
@@ -15,6 +20,7 @@
 // 6. Shorter romanizations (closer to what was typed).
 // Candidates that map to the same Khmer word are shown only once.
 
+import { spell } from "./spell.js";
 import { guess } from "./converter.js";
 
 // Prior weights for very common words, used before any learning exists.
@@ -63,9 +69,20 @@ export function suggest(context, dict, learned, limit = 3) {
     .slice(0, limit)
     .map(({ key, khmer, type, replaceWords }) => ({ key, khmer, type, replaceWords }));
 
-  // Nothing in the dictionary: offer the letter-by-letter guess as a chip.
+  // Top up the strip with rule-based spellings of the last word. Tapping one
+  // teaches it, so a word only ever has to be spelled once.
+  const last = words[words.length - 1];
+  const taken = new Set(out.map((c) => c.khmer));
+  for (const khmer of spell(last, limit)) {
+    if (out.length >= limit) break;
+    if (taken.has(khmer)) continue;
+    taken.add(khmer);
+    out.push({ key: last, khmer, type: "spell", replaceWords: 1 });
+  }
+
+  // A word with no vowel at all (xyz) has no syllable to spell. Fall back to
+  // the letter-by-letter map so the strip is never empty mid-word.
   if (out.length === 0) {
-    const last = words[words.length - 1];
     return [{ key: last, khmer: guess(last), type: "guess", replaceWords: 1 }];
   }
   return out;

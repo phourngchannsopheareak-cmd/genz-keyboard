@@ -71,7 +71,13 @@ export default function App() {
     const start = idx + 1;
     const typed = buffer.slice(start).toLowerCase();
     setBuffer(buffer.slice(0, start) + s.key + " ");
-    if (s.type !== "match") return; // don't learn low-confidence guesses
+    if (s.type === "guess") return; // the letter-map fallback is not a word
+    // A tapped spelling becomes a real custom word, so it converts from now on.
+    if (s.type === "spell" && /^[a-z']+$/.test(typed)) {
+      const words = { ...custom, [typed]: s.khmer };
+      setCustom(words);
+      localStorage.setItem(CUSTOM_KEY, JSON.stringify(words));
+    }
     const next = {
       picks: { ...learned.picks, [typed]: s.khmer },
       words: { ...learned.words, [s.khmer]: (learned.words[s.khmer] || 0) + 1 },
@@ -214,7 +220,7 @@ export default function App() {
           {suggestions.map((s, idx) => (
             <button
               key={s.khmer + idx}
-              className={`chip ${s.type === "guess" ? "chip-guess" : ""}`}
+              className={`chip ${s.type !== "match" ? "chip-guess" : ""}`}
               onPointerDown={(e) => {
                 e.preventDefault();
                 acceptSuggestion(s);

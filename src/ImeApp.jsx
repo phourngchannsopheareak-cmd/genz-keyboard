@@ -45,7 +45,7 @@ export default function ImeApp() {
   const [learned, setLearned] = useState(loadLearned);
   const [mock, setMock] = useState("");
 
-  const custom = useMemo(loadCustom, []);
+  const [custom, setCustom] = useState(loadCustom);
   const dict = useMemo(() => ({ ...baseDictionary, ...custom }), [custom]);
   const suggestions = useMemo(
     () => suggest(buffer, dict, learned),
@@ -78,6 +78,23 @@ export default function ImeApp() {
     localStorage.setItem(LEARNED_KEY, JSON.stringify(next));
   }
 
+  // A spelled word the user taps becomes a real dictionary word, so the next
+  // time it is typed it comes back as a plain match. This is how the
+  // dictionary grows without anyone editing dictionary.json.
+  function learnSpelling(typed, khmer) {
+    if (!/^[a-z']+$/.test(typed)) return;
+    const next = { ...custom, [typed]: khmer };
+    setCustom(next);
+    localStorage.setItem(CUSTOM_KEY, JSON.stringify(next));
+  }
+
+  // Accepting a chip: record the pick, and save a spelling as a new word.
+  function accept(typed, s) {
+    const key = typed.toLowerCase();
+    if (s.type === "spell") learnSpelling(key, s.khmer);
+    remember(key, s.khmer);
+  }
+
   function type(ch) {
     let out = ch;
     if (shiftOn && /[a-z]/.test(ch)) {
@@ -95,7 +112,7 @@ export default function ImeApp() {
     const top = suggest(b, dict, learned)[0];
     const khmer = top ? top.khmer : convert(b, dict).text;
     host.commit(khmer);
-    if (top && top.type === "match") remember(b.toLowerCase(), khmer);
+    if (top && top.type !== "guess") accept(b, top);
     setBuffer("");
   }
 
@@ -116,7 +133,7 @@ export default function ImeApp() {
 
   function acceptSuggestion(s) {
     host.commit(s.khmer);
-    if (s.type === "match") remember(buffer.toLowerCase(), s.khmer);
+    if (s.type !== "guess") accept(buffer, s);
     setBuffer("");
   }
 
@@ -184,7 +201,7 @@ export default function ImeApp() {
           {suggestions.map((s, idx) => (
             <button
               key={s.khmer + idx}
-              className={`chip ${s.type === "guess" ? "chip-guess" : ""}`}
+              className={`chip ${s.type !== "match" ? "chip-guess" : ""}`}
               onPointerDown={(e) => {
                 e.preventDefault();
                 acceptSuggestion(s);

@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build && vite build --config vite.ime.config.js",
     "preview": "vite preview",
-    "test": "node test/accept.mjs && node test/suggest.mjs"
+    "test": "node test/accept.mjs && node test/suggest.mjs && node test/spell.mjs && node test/ios-parity.mjs",
+    "eval": "node test/spell-eval.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

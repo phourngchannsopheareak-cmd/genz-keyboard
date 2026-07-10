@@ -26,3 +26,6 @@ ios/Keyboard/Web/*
 # os
 .DS_Store
 Thumbs.db
+
+# local agent / editor tooling
+.claude/

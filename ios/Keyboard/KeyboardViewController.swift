@@ -298,8 +298,8 @@ class KeyboardViewController: UIInputViewController {
         guard i < currentSuggestions.count else { return }
         let s = currentSuggestions[i]
         textDocumentProxy.insertText(s.khmer)
-        if !s.isGuess && !buffer.isEmpty {
-            engine.learn(typed: buffer.lowercased(), khmer: s.khmer)
+        if !buffer.isEmpty {
+            engine.accept(typed: buffer, suggestion: s)
         }
         buffer = ""
         refresh()
@@ -308,9 +308,11 @@ class KeyboardViewController: UIInputViewController {
     private func commitBuffer() {
         guard !buffer.isEmpty else { return }
         let khmer: String
-        if let top = currentSuggestions.first, !top.isGuess {
+        // Space accepts the top chip, whether it came from the dictionary or
+        // from the speller. Only the letter-map fallback is not worth keeping.
+        if let top = currentSuggestions.first, top.kind != .guess {
             khmer = top.khmer
-            engine.learn(typed: buffer.lowercased(), khmer: khmer)
+            engine.accept(typed: buffer, suggestion: top)
         } else {
             khmer = engine.convert(buffer)
         }
