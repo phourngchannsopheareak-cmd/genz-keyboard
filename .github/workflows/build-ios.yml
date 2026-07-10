@@ -18,21 +18,11 @@ jobs:
       - name: Use the newest installed Xcode
         run: sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)" && xcodebuild -version
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Build web keyboard
-        run: |
-          npm install
-          npm run build
-
-      - name: Copy keyboard page into iOS resources
+      - name: Copy dictionary into iOS resources
         run: |
           rm -rf ios/Keyboard/Web
           mkdir -p ios/Keyboard/Web
-          cp dist/ime.html ios/Keyboard/Web/
+          cp src/dictionary.json ios/Keyboard/Web/
 
       - name: Install XcodeGen
         run: brew install xcodegen
