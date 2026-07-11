@@ -13,8 +13,8 @@ Project root: `D:\Desktop\claude\Session\khmer-keyboard`
 |---|---|
 | Web demo | Live, working |
 | Android app | Real system keyboard, **installed & confirmed working on his phone** |
-| iPhone app | Native rewrite built, **awaiting his install/confirmation** |
-| Spelling engine | Built in JS + Swift, tests pass, **awaiting his real-world feedback** |
+| iPhone app | Native IPA verified correct, but **extension fails to launch on his phone even after a clean reinstall** — see LIVE HANDOFF below |
+| Spelling engine | Built in JS + Swift, tests pass, live on web + APK, **awaiting his real-world feedback** |
 
 ### Links (use these exact URL forms)
 
@@ -129,12 +129,141 @@ He asked about "install like Delta" (tap-a-link, no cable). Explained: Delta-sty
 
 ---
 
-## Immediate next step
+## iPhone "it shows a Khmer keyboard" — diagnosed 2026-07-10
 
-Two things, both waiting on him:
+He switched to Genz Keyboard and got a **Khmer letter keyboard** (Khmer glyphs on
+the keys, space bar `ដកឃ្លា`). That is **not** our keyboard — ours is a Latin
+QWERTY with a `វាយ Khmerlish…` bar and 3 gold chips on top. What is happening:
 
-1. **Ask him to Sideloadly the new native IPA and confirm the keyboard finally appears and types** (previous WebView version silently died). If it works, tune height (currently 272pt phone / 330pt iPad) and colors.
-2. **Ask him to try the new spelling chips** on the web demo or the updated APK: type a word that is NOT in the dictionary (`chnam`, `borng`, `pibak`) and check the right Khmer is among the 2-3 gold chips. Tapping it should make it stick.
+- The extension declares `PrimaryLanguage = km-KH` (`ios/Keyboard/Info.plist`).
+  When a keyboard extension **fails to launch**, iOS substitutes the system
+  keyboard for that primary language, i.e. the **system Khmer keyboard**. So the
+  Khmer keyboard IS the "our extension did not load" symptom, not a fallback to
+  his English keyboard.
+- The **current `ios-latest` IPA was verified correct**: native (no WebKit in the
+  binary), `UIInputViewController` + `KeyboardViewController` + `Speller` present,
+  resolved principal class `Keyboard.KeyboardViewController`, extension point
+  `com.apple.keyboard-service`, bundle id `com.reak.genzkeyboard.keyboard`. The
+  code path in `KeyboardViewController.viewDidLoad` has no trap.
+- So the build is not the problem. **UPDATE: he did a full clean reinstall of the
+  newest IPA (deleted the app first, downloaded fresh) and it STILL shows the
+  system Khmer keyboard.** That rules out the stale-install theory. The app
+  container opens fine and Genz Keyboard appears in the switcher, but selecting it
+  falls back — so the **extension process fails to launch**, while the container
+  app is signed fine.
+- Because the container app runs but the extension does not, the most likely
+  cause is the free-cert sideload not getting the **nested `.appex`** to run
+  (signing/provisioning of the extension), which no code change fixes. A launch
+  crash is possible but `viewDidLoad` / `Engine.init` / `Speller` were code
+  reviewed and have no trap.
+
+## LIVE HANDOFF — where the iPhone issue stands (2026-07-10, RESOLVED to signing)
+
+**Diagnosis is CLOSED: it is a code-signing rejection, not a code bug. Next step
+is a different signing path, not another Sideloadly install and not a code edit.**
+
+### What his two answers were
+1. **Restart test:** did it. STILL BROKEN — keys still show Khmer letters after a
+   full power off/on and the Allow Full Access toggle. So a reboot does not fix it.
+2. **Analytics Data check:** entries DO exist. He opened the `Keyboard-2026-07-10`
+   `.ips`. The decisive fields:
+   - `procPath: .../GenzKeyboard.app/PlugIns/Keyboard.appex/Keyboard` (our extension did try to launch)
+   - `exception type EXC_BAD_ACCESS, signal SIGKILL, subtype KERN_PROTECTION_FAILURE`
+   - **`termination namespace CODESIGNING, indicator "Invalid Page"`**
+   - context: iPhone15,3 (iPhone 13 Pro Max), iOS 26.2.1, `codeSigningTeamID 2R74FR674S`,
+     rewritten bundle id `com.reak.genzkeyboard.2R74FR674S.keyboard` (free-cert unique-id rewrite, normal).
+
+### What that means
+An entry existing looked like the "extension is crashing, go fix the code" branch,
+but the **actual termination reason is CODESIGNING / Invalid Page**. iOS killed the
+extension at page-in because a code page failed signature validation. That is the
+**signing branch**, not a fault in `viewDidLoad` / `Engine.init` / `Speller`. The
+outer app is signed and opens; the nested `Keyboard.appex` did not get a valid
+signature from the free 7-day sideload, so the OS SIGKILLs it instantly and falls
+back to the system Khmer keyboard. **No change to our Swift fixes this.** The
+`RequestsOpenAccess = false` lever also does not help (Open Access is a runtime
+permission, not a launch gate; this dies before that matters).
+
+### Path forward (pick one, told to him in plain steps)
+- **AltStore / SideStore** — try FIRST. Free, same Apple ID, but it manages the
+  developer signature itself and is generally better at signing **nested app
+  extensions** and auto-refreshing every 7 days than Sideloadly. Not guaranteed
+  (still free provisioning), but the cheapest thing that could actually work.
+- **TestFlight ($99/yr Apple Developer)** — the durable, boring, always-works fix.
+  Proper signing, no cable, no weekly refresh, install by a link (his "like Delta"
+  wish, done legitimately). Recommend this the moment iPhone demand is real.
+- **Meanwhile Android already works** (one-tap APK link, confirmed on his phone).
+  That stays the growth path; iPhone is best-effort until AltStore works or he pays.
+
+Do NOT ask him to Sideloadly-install again — same tool = same signing wall.
+
+### AltStore attempt (2026-07-10, evening) — FAILED on his Windows machine
+We tried the free AltStore route to get a better nested-`.appex` signature. Full
+play-by-play so nobody repeats it:
+- AltServer installed and ran; iPhone (named **`Pong`**, not `iPhone`) showed up as a
+  connected device once iTunes saw it.
+- His iTunes was the **Microsoft Store** version → AltServer "iTunes Not Found".
+  Uninstalled it, installed **apple.com iTunes** (`C:\Program Files\iTunes`). iTunes
+  then saw `Pong` fine (device listed in sidebar).
+- "Install AltStore" prompted for Apple ID, he entered the **second** (working) Apple
+  ID, clicked OK → **nothing installed on the phone, no notification, no error**, every
+  time. Repeated several times.
+- Root cause surfaced late: AltServer reported **"iCloud not found"**. AltStore on
+  Windows needs **iCloud from apple.com**, not the Store version. Tried the legacy
+  2020 `iCloudSetup.exe`
+  (`https://updates.cdn-apple.com/2020/windows/001-39935-20200911-1A70AA56-F448-11EA-8CC0-99D41950005E/iCloudSetup.exe`)
+  and pointing AltServer at `C:\Program Files\Common Files\Apple` via Choose Folder.
+  **Still "nothing shows up"** — the legacy iCloud never registered properly on his
+  Windows (likely Win11 + Media Feature Pack / too-old build), so AltServer could not
+  generate anisette data to sign in, so the install died silently.
+- Also note he said his Apple ID sends **no verification code** on sign-in, i.e. it may
+  **lack two-factor auth**, which free Apple signing requires — another possible
+  silent-fail cause worth checking before ever retrying AltStore.
+- **He got very distressed during this.** Called it off. Do not drag him back through
+  AltStore/Sideloadly cold. It is a genuinely hostile setup for a non-technical user on
+  Windows.
+
+### KEY FINDING (2026-07-10, late) — it's an iOS-VERSION wall, not a hard free-cert wall
+He revealed our keyboard **works on his iPad**, and the iPad is on **iOS 17.7.10**
+while the failing iPhone is on **iOS 26.2.1**. This reframes the whole diagnosis:
+- Free-cert sideloading **can** sign and run our keyboard extension — proven on iOS 17.
+- iOS 26's stricter runtime code-signing enforcement (the `codeSigningMonitor: 2` /
+  `CODESIGNING Invalid Page` SIGKILL in his crash log) is what kills the free-signed
+  `.appex` on the iPhone. Older iOS (17.x) does not enforce this hard, so it runs.
+- So the earlier "free cert can't sign keyboards" line was **too strong** — correct
+  statement is "free-cert extensions get killed on iOS 26, but run on iOS 17."
+- Practical upshot: **he has a working Apple device today (the iPad on iOS 17)**. Pivoted
+  him to actually USE + test it there, including the untested speller words
+  (`chnam`, `borng`, `pibak`) — this is the pending real-world feedback loop.
+- For the iPhone specifically, the durable fix is still the **paid account** (a strong/
+  paid cert satisfies iOS 26's checks). Do NOT keep him on the free iPhone treadmill.
+- Open question for next session: is the iPad keyboard the current build or an old one?
+  Confirm it shows QWERTY + `វាយ Khmerlish` bar. If old, a fresh free-sign to the iPad
+  is low-risk since iOS 17 accepts it.
+
+### DECISION: iPhone is parked. Recommend TestFlight when he's ready.
+Free sideloading (Sideloadly AND AltStore) cannot reliably sign the nested keyboard
+`.appex` on his setup. The only durable iPhone fix is **TestFlight ($99/yr Apple
+Developer)**: proper signing, install-by-link, no cable, no weekly refresh — matches his
+"install like Delta" wish, legitimately. Android is the live growth path (one-tap APK,
+confirmed working). When he opts into the $99, walk him through enrollment + TestFlight
+slowly; that removes every failure mode hit above. Do NOT reopen the free route.
+
+**Prepared-but-not-done lever** (only if useful after the above): set
+`RequestsOpenAccess = false` in `ios/Keyboard/Info.plist`. The native keyboard
+does not need Full Access and `UserDefaults.standard` still persists learned
+words without it; this drops the "Allow Full Access" step and one entitlement
+failure mode. Note this likely does NOT fix a pure signing rejection (Open Access
+is a runtime permission, not a launch gate), so do not oversell it to him.
+
+**Do not** make him sideload again until his two answers above come back — every
+install is a painful cable+Sideloadly cycle for a non-technical user, and the
+current build is already verified correct.
+
+### The spelling engine (shipped this session) is a SEPARATE, working track
+It is live on web + in the APK and fully tested. When the iPhone finally loads,
+also have him try words NOT in the dictionary (`chnam`, `borng`, `pibak`) and
+confirm the right Khmer is among the 3 gold chips; tapping one saves it.
 
 ---
 
