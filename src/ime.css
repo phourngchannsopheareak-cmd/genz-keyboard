@@ -118,7 +118,8 @@ body {
   color: #1c1c1e;
 }
 
-.predict-bar .chip:active {
+.predict-bar .chip:active,
+.predict-bar .chip.pressed {
   background: rgba(0, 0, 0, 0.08);
 }
 
@@ -126,40 +127,40 @@ body {
   color: #b06a00;
 }
 
-/* ---- Keys, light iPhone theme (default) ---- */
+/* ---- Keys, light Apple theme (default) ----
+   Apple press behavior: letter keys do NOT change color (the balloon above
+   the finger is the feedback); the gray function keys INVERT to white when
+   pressed, and the white space bar inverts to gray. */
 .ime-root .keyboard {
   background: #d1d4db;
 }
 
 .ime-root .key-char {
   background: #ffffff;
-  color: #1c1c1e;
+  color: #000000;
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
-}
-
-.ime-root .key-char:active {
-  background: #b9bdc6;
 }
 
 .ime-root .key-char::after {
   background: #ffffff;
-  color: #1c1c1e;
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.28);
+  color: #000000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.32);
 }
 
 .ime-root .key-special {
-  background: #abafba;
-  color: #1c1c1e;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.22);
+  background: #adb3bc;
+  color: #000000;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
 }
 
-.ime-root .key-special:active {
-  background: #9296a1;
+.ime-root .key-special:active,
+.ime-root .key-special.pressed {
+  background: #ffffff;
 }
 
 .ime-root .key-shift-on {
   background: #ffffff;
-  color: #1c1c1e;
+  color: #000000;
 }
 
 .ime-root .key-space {
@@ -168,14 +169,20 @@ body {
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
 }
 
-.ime-root .key-space:active {
-  background: #b9bdc6;
+.ime-root .key-space:active,
+.ime-root .key-space.pressed {
+  background: #adb3bc;
 }
 
 .ime-root .key-send {
   background: var(--gold);
   color: #141312;
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+}
+
+.ime-root .key-send:active,
+.ime-root .key-send.pressed {
+  background: #d3942c;
 }
 
 .key-globe {
@@ -188,12 +195,15 @@ body {
   content: none;
 }
 
-/* ---- Dark mode: brand dark keyboard ---- */
+/* ---- Dark mode: Apple dark keyboard ----
+   Flat approximations of the iOS dark keyboard (the real one is translucent
+   blur, which a WebView over an app cannot do). Gold stays only on the return
+   key and the speller chips, as the brand accent. */
 @media (prefers-color-scheme: dark) {
   body,
   .ime-root,
   .ime-root .keyboard {
-    background: #201d19;
+    background: #212123;
   }
 
   .ime-target {
@@ -201,63 +211,68 @@ body {
     border-color: rgba(255, 255, 255, 0.12);
   }
   .ime-target-text {
-    color: #f2ede4;
+    color: #ffffff;
   }
   .ime-target-empty {
-    color: #8a8578;
+    color: rgba(255, 255, 255, 0.4);
   }
 
   .predict-bar {
-    border-top-color: #2e2b26;
+    border-top-color: rgba(255, 255, 255, 0.08);
   }
   .predict-roman,
   .predict-hint {
-    color: #8a8578;
+    color: rgba(255, 255, 255, 0.55);
   }
   .predict-bar .chip + .chip {
-    border-left-color: #2e2b26;
+    border-left-color: rgba(255, 255, 255, 0.16);
   }
   .predict-bar .chip-kh {
-    color: #f2ede4;
+    color: #ffffff;
   }
-  .predict-bar .chip:active {
-    background: rgba(255, 255, 255, 0.08);
+  .predict-bar .chip:active,
+  .predict-bar .chip.pressed {
+    background: rgba(255, 255, 255, 0.1);
   }
   .predict-bar .chip-guess .chip-kh {
     color: var(--gold);
   }
 
   .ime-root .key-char {
-    background: #4a453d;
-    color: #f2ede4;
-    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
-  }
-  .ime-root .key-char:active {
-    background: #6a655c;
+    background: #6b6b6e;
+    color: #ffffff;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
   }
   .ime-root .key-char::after {
-    background: #6a655c;
-    color: #f2ede4;
-    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.5);
+    background: #757579;
+    color: #ffffff;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.55);
   }
   .ime-root .key-special {
-    background: #302c26;
-    color: #f2ede4;
+    background: #464649;
+    color: #ffffff;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
   }
-  .ime-root .key-special:active {
-    background: #4a453d;
+  .ime-root .key-special:active,
+  .ime-root .key-special.pressed {
+    background: #6b6b6e;
   }
   .ime-root .key-shift-on {
-    background: #f2ede4;
-    color: #141312;
+    background: #ffffff;
+    color: #000000;
   }
   .ime-root .key-space {
-    background: #4a453d;
-    color: #8a8578;
-    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+    background: #6b6b6e;
+    color: rgba(255, 255, 255, 0.65);
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
   }
-  .ime-root .key-space:active {
-    background: #6a655c;
+  .ime-root .key-space:active,
+  .ime-root .key-space.pressed {
+    background: #464649;
+  }
+  .ime-root .key-send:active,
+  .ime-root .key-send.pressed {
+    background: #d3942c;
   }
 }
 

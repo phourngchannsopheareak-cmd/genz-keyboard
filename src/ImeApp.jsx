@@ -137,6 +137,26 @@ export default function ImeApp() {
     setBuffer("");
   }
 
+  // Press feedback. The `pressed` class drives the letter balloon and the
+  // Apple-style key invert in CSS; :active never applies because pointerdown
+  // is prevented. The tiny vibration is the Android click feel (iOS keyboard
+  // is native and does its own sound + haptic; browsers without vibrate
+  // simply skip it).
+  function pressStart(e, action) {
+    e.preventDefault();
+    e.currentTarget.classList.add("pressed");
+    try {
+      if (navigator.vibrate) navigator.vibrate(8);
+    } catch {
+      /* vibration is best-effort */
+    }
+    if (action) action();
+  }
+
+  function pressEnd(e) {
+    e.currentTarget.classList.remove("pressed");
+  }
+
   // Hold-to-repeat for the backspace key. Window listeners make it stop no
   // matter where the finger lifts.
   const holdTimer = useRef(null);
@@ -168,10 +188,10 @@ export default function ImeApp() {
         key={label}
         className="key key-char"
         data-key={shown}
-        onPointerDown={(e) => {
-          e.preventDefault();
-          type(label);
-        }}
+        onPointerDown={(e) => pressStart(e, () => type(label))}
+        onPointerUp={pressEnd}
+        onPointerCancel={pressEnd}
+        onLostPointerCapture={pressEnd}
       >
         {shown}
       </button>
@@ -205,10 +225,10 @@ export default function ImeApp() {
             <button
               key={s.khmer + idx}
               className={`chip ${s.type !== "match" ? "chip-guess" : ""}`}
-              onPointerDown={(e) => {
-                e.preventDefault();
-                acceptSuggestion(s);
-              }}
+              onPointerDown={(e) => pressStart(e, () => acceptSuggestion(s))}
+              onPointerUp={pressEnd}
+              onPointerCancel={pressEnd}
+              onLostPointerCapture={pressEnd}
             >
               <span className="chip-kh">{s.khmer}</span>
             </button>
@@ -229,10 +249,10 @@ export default function ImeApp() {
           {page === "letters" ? (
             <button
               className={`key key-special key-wide ${shiftOn ? "key-shift-on" : ""}`}
-              onPointerDown={(e) => {
-                e.preventDefault();
-                setShiftOn((v) => !v);
-              }}
+              onPointerDown={(e) => pressStart(e, () => setShiftOn((v) => !v))}
+              onPointerUp={pressEnd}
+              onPointerCancel={pressEnd}
+              onLostPointerCapture={pressEnd}
             >
               ⇧
             </button>
@@ -242,10 +262,10 @@ export default function ImeApp() {
           <div className="krow-mid">{rows[2].map(charKey)}</div>
           <button
             className="key key-special key-wide"
-            onPointerDown={(e) => {
-              e.preventDefault();
-              startBackspace();
-            }}
+            onPointerDown={(e) => pressStart(e, startBackspace)}
+            onPointerUp={pressEnd}
+            onPointerCancel={pressEnd}
+            onLostPointerCapture={pressEnd}
           >
             ⌫
           </button>
@@ -254,37 +274,39 @@ export default function ImeApp() {
         <div className="krow">
           <button
             className="key key-special key-mode"
-            onPointerDown={(e) => {
-              e.preventDefault();
-              setPage((p) => (p === "letters" ? "symbols" : "letters"));
-            }}
+            onPointerDown={(e) =>
+              pressStart(e, () => setPage((p) => (p === "letters" ? "symbols" : "letters")))
+            }
+            onPointerUp={pressEnd}
+            onPointerCancel={pressEnd}
+            onLostPointerCapture={pressEnd}
           >
             {page === "letters" ? "123" : "ABC"}
           </button>
           <button
             className="key key-special key-globe"
-            onPointerDown={(e) => {
-              e.preventDefault();
-              host.switchKeyboard();
-            }}
+            onPointerDown={(e) => pressStart(e, () => host.switchKeyboard())}
+            onPointerUp={pressEnd}
+            onPointerCancel={pressEnd}
+            onLostPointerCapture={pressEnd}
           >
             🌐
           </button>
           <button
             className="key key-space"
-            onPointerDown={(e) => {
-              e.preventDefault();
-              onSpace();
-            }}
+            onPointerDown={(e) => pressStart(e, onSpace)}
+            onPointerUp={pressEnd}
+            onPointerCancel={pressEnd}
+            onLostPointerCapture={pressEnd}
           >
             space
           </button>
           <button
             className="key key-send"
-            onPointerDown={(e) => {
-              e.preventDefault();
-              onReturn();
-            }}
+            onPointerDown={(e) => pressStart(e, onReturn)}
+            onPointerUp={pressEnd}
+            onPointerCancel={pressEnd}
+            onLostPointerCapture={pressEnd}
           >
             ⏎
           </button>

@@ -3,6 +3,12 @@ import UIKit
 /// Fully native Genz Keyboard: an iPhone-style QWERTY that turns romanized
 /// Khmerlish into Khmer script. No WebView (keyboard extensions have a strict
 /// memory limit that kills WebView-based keyboards).
+///
+/// The press feel deliberately copies the Apple keyboard:
+/// - letter keys show a balloon with the tapped letter instead of dimming
+/// - the gray function keys invert to white while pressed (and space inverts
+///   to gray), snapping on touch and easing back on release
+/// - every key plays the system keyboard click and a light haptic
 class KeyboardViewController: UIInputViewController {
 
     private let engine = Engine.shared
@@ -24,23 +30,35 @@ class KeyboardViewController: UIInputViewController {
     private var currentSuggestions: [Engine.Suggestion] = []
 
     private let romanLabel = UILabel()
-    private var chipButtons: [UIButton] = []
+    private var chipButtons: [KeyButton] = []
     private let chipsStack = UIStackView()
+    private var chipSeparators: [UIView] = []
     private let rowsContainer = UIStackView()
+    private var letterButtons: [KeyButton] = []
+    private var shiftButton: KeyButton?
     private var heightSet = false
     private var delayTimer: Timer?
     private var repeatTimer: Timer?
 
-    // MARK: - Colors (light iPhone look by default, brand dark in dark mode)
+    // The balloon that shows which letter is under the finger.
+    private let popupView = UIView()
+    private let popupLabel = UILabel()
+
+    private let haptic = UIImpactFeedbackGenerator(style: .light)
+
+    // MARK: - Colors (Apple keyboard palette, light and dark)
 
     private var isDark: Bool { traitCollection.userInterfaceStyle == .dark }
-    private var trayColor: UIColor { isDark ? UIColor(hex: 0x201D19) : UIColor(hex: 0xD1D4DB) }
-    private var keyColor: UIColor { isDark ? UIColor(hex: 0x4A453D) : .white }
-    private var keyTextColor: UIColor { isDark ? UIColor(hex: 0xF2EDE4) : UIColor(hex: 0x1C1C1E) }
-    private var specialColor: UIColor { isDark ? UIColor(hex: 0x302C26) : UIColor(hex: 0xABAFBA) }
-    private var mutedColor: UIColor { isDark ? UIColor(hex: 0x8A8578) : UIColor(hex: 0x6C6C70) }
+    private var trayColor: UIColor { isDark ? UIColor(hex: 0x212123) : UIColor(hex: 0xD1D4DB) }
+    private var keyColor: UIColor { isDark ? UIColor(hex: 0x6B6B6E) : .white }
+    private var specialColor: UIColor { isDark ? UIColor(hex: 0x464649) : UIColor(hex: 0xADB3BC) }
+    private var keyTextColor: UIColor { isDark ? .white : .black }
+    private var mutedColor: UIColor { isDark ? UIColor(white: 1, alpha: 0.55) : UIColor(hex: 0x6C6C70) }
     private var goldColor: UIColor { UIColor(hex: 0xE8A93D) }
-    private var dividerColor: UIColor { isDark ? UIColor(hex: 0x2E2B26) : UIColor(white: 0, alpha: 0.14) }
+    private var goldPressedColor: UIColor { UIColor(hex: 0xD3942C) }
+    private var popupColor: UIColor { isDark ? UIColor(hex: 0x757579) : .white }
+    private var separatorColor: UIColor { isDark ? UIColor(white: 1, alpha: 0.16) : UIColor(white: 0, alpha: 0.18) }
+    private var chipFlashColor: UIColor { isDark ? UIColor(white: 1, alpha: 0.10) : UIColor(white: 0, alpha: 0.08) }
 
     // MARK: - Lifecycle
 
@@ -49,6 +67,7 @@ class KeyboardViewController: UIInputViewController {
         buildUI()
         rebuildRows()
         refresh()
+        haptic.prepare()
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -69,6 +88,16 @@ class KeyboardViewController: UIInputViewController {
         applyColors()
         rebuildRows()
         refresh()
+    }
+
+    // MARK: - Click feel
+
+    /// The system keyboard click plus a light tap. The click respects the
+    /// user's Sound settings; the haptic needs Full Access and is silently
+    /// skipped without it.
+    private func clickFeedback() {
+        UIDevice.current.playInputClick()
+        haptic.impactOccurred()
     }
 
     // MARK: - UI construction
@@ -96,7 +125,6 @@ class KeyboardViewController: UIInputViewController {
         bar.spacing = 0
         bar.heightAnchor.constraint(equalToConstant: 64).isActive = true
 
-        // Top: what you typed (small, gray).
         romanLabel.font = UIFont.systemFont(ofSize: 12)
         let composeRow = UIStackView(arrangedSubviews: [romanLabel])
         composeRow.isLayoutMarginsRelativeArrangement = true
@@ -104,13 +132,11 @@ class KeyboardViewController: UIInputViewController {
         composeRow.heightAnchor.constraint(equalToConstant: 20).isActive = true
         bar.addArrangedSubview(composeRow)
 
-        // Bottom: candidate columns. The 1pt spacing over the stack's divider
-        // colour reads as thin vertical separators between columns.
         chipsStack.axis = .horizontal
-        chipsStack.spacing = 1
+        chipsStack.spacing = 0
         chipsStack.distribution = .fillEqually
         for i in 0..<3 {
-            let b = UIButton(type: .system)
+            let b = KeyButton(frame: .zero)
             b.tag = i
             b.titleLabel?.font = UIFont.systemFont(ofSize: 25)
             // Long candidates (whole phrases) shrink to fit their column.
@@ -118,6 +144,7 @@ class KeyboardViewController: UIInputViewController {
             b.titleLabel?.minimumScaleFactor = 0.5
             b.titleLabel?.lineBreakMode = .byClipping
             b.contentEdgeInsets = UIEdgeInsets(top: 0, left: 4, bottom: 0, right: 4)
+            b.layer.cornerRadius = 6
             b.addTarget(self, action: #selector(chipTapped(_:)), for: .touchDown)
             chipButtons.append(b)
             chipsStack.addArrangedSubview(b)
@@ -125,30 +152,79 @@ class KeyboardViewController: UIInputViewController {
         bar.addArrangedSubview(chipsStack)
         root.addArrangedSubview(bar)
 
+        // Thin vertical lines between the candidate columns (Apple style).
+        for i in 0..<2 {
+            let sep = UIView()
+            sep.isUserInteractionEnabled = false
+            sep.translatesAutoresizingMaskIntoConstraints = false
+            chipsStack.addSubview(sep)
+            NSLayoutConstraint.activate([
+                sep.centerXAnchor.constraint(equalTo: chipButtons[i].trailingAnchor),
+                sep.centerYAnchor.constraint(equalTo: chipsStack.centerYAnchor),
+                sep.widthAnchor.constraint(equalToConstant: 0.5),
+                sep.heightAnchor.constraint(equalTo: chipsStack.heightAnchor, multiplier: 0.55),
+            ])
+            chipSeparators.append(sep)
+        }
+
         rowsContainer.axis = .vertical
         rowsContainer.spacing = 9
         rowsContainer.distribution = .fillEqually
         root.addArrangedSubview(rowsContainer)
+
+        // The balloon sits above everything and never eats touches.
+        popupView.isHidden = true
+        popupView.isUserInteractionEnabled = false
+        popupView.layer.cornerRadius = 11
+        popupView.layer.shadowColor = UIColor.black.cgColor
+        popupView.layer.shadowOpacity = 0.30
+        popupView.layer.shadowOffset = CGSize(width: 0, height: 3)
+        popupView.layer.shadowRadius = 8
+        popupLabel.font = UIFont.systemFont(ofSize: 30)
+        popupLabel.textAlignment = .center
+        popupView.addSubview(popupLabel)
+        view.addSubview(popupView)
     }
 
-    private func keyButton(_ title: String, special: Bool = false) -> UIButton {
-        let b = UIButton(type: .system)
+    private enum KeyStyle { case letter, special, space, send }
+
+    private func keyButton(_ title: String, style: KeyStyle) -> KeyButton {
+        let b = KeyButton(frame: .zero)
         b.setTitle(title, for: .normal)
-        b.titleLabel?.font = UIFont.systemFont(ofSize: special ? 17 : 22)
-        b.backgroundColor = special ? specialColor : keyColor
-        b.setTitleColor(keyTextColor, for: .normal)
-        b.layer.cornerRadius = 6
+        b.layer.cornerRadius = 5
         b.layer.shadowColor = UIColor.black.cgColor
-        b.layer.shadowOpacity = isDark ? 0.5 : 0.28
+        b.layer.shadowOpacity = isDark ? 0.5 : 0.3
         b.layer.shadowOffset = CGSize(width: 0, height: 1)
         b.layer.shadowRadius = 0
-        b.addTarget(self, action: #selector(pressFeedbackDown(_:)), for: .touchDown)
-        b.addTarget(self, action: #selector(pressFeedbackUp(_:)),
-                    for: [.touchUpInside, .touchUpOutside, .touchCancel])
+        switch style {
+        case .letter:
+            b.titleLabel?.font = UIFont.systemFont(ofSize: 23)
+            b.baseColor = keyColor
+            b.pressedColor = nil // the balloon is the press feedback
+            b.setTitleColor(keyTextColor, for: .normal)
+        case .special:
+            b.titleLabel?.font = UIFont.systemFont(ofSize: 17)
+            b.baseColor = specialColor
+            b.pressedColor = keyColor // Apple invert
+            b.setTitleColor(keyTextColor, for: .normal)
+        case .space:
+            b.titleLabel?.font = UIFont.systemFont(ofSize: 15)
+            b.baseColor = keyColor
+            b.pressedColor = specialColor // Apple invert
+            b.setTitleColor(mutedColor, for: .normal)
+        case .send:
+            b.titleLabel?.font = UIFont.systemFont(ofSize: 17)
+            b.baseColor = goldColor
+            b.pressedColor = goldPressedColor
+            b.setTitleColor(UIColor(hex: 0x141312), for: .normal)
+        }
         return b
     }
 
     private func rebuildRows() {
+        hidePopup()
+        letterButtons = []
+        shiftButton = nil
         for v in rowsContainer.arrangedSubviews {
             rowsContainer.removeArrangedSubview(v)
             v.removeFromSuperview()
@@ -181,14 +257,12 @@ class KeyboardViewController: UIInputViewController {
         r3.spacing = 6
         r3.distribution = .fill
 
-        let shift = keyButton(shiftOn ? "⬆" : "⇧", special: true)
-        if shiftOn {
-            shift.backgroundColor = keyTextColor
-            shift.setTitleColor(trayColor, for: .normal)
-        }
+        let shift = keyButton("⇧", style: .special)
         shift.addTarget(self, action: #selector(shiftTapped), for: .touchDown)
         shift.isEnabled = !symbolsOn
         shift.alpha = symbolsOn ? 0 : 1
+        shiftButton = shift
+        updateShiftAppearance()
         r3.addArrangedSubview(shift)
 
         var midKeys: [UIButton] = []
@@ -198,7 +272,7 @@ class KeyboardViewController: UIInputViewController {
             r3.addArrangedSubview(b)
         }
 
-        let bksp = keyButton("⌫", special: true)
+        let bksp = keyButton("⌫", style: .special)
         bksp.addTarget(self, action: #selector(backspaceDown), for: .touchDown)
         bksp.addTarget(self, action: #selector(backspaceUp),
                        for: [.touchUpInside, .touchUpOutside, .touchCancel])
@@ -219,25 +293,21 @@ class KeyboardViewController: UIInputViewController {
         r4.spacing = 6
         r4.distribution = .fill
 
-        let mode = keyButton(symbolsOn ? "ABC" : "123", special: true)
+        let mode = keyButton(symbolsOn ? "ABC" : "123", style: .special)
         mode.addTarget(self, action: #selector(modeTapped), for: .touchDown)
         mode.widthAnchor.constraint(equalToConstant: 54).isActive = true
         r4.addArrangedSubview(mode)
 
-        let globe = keyButton("🌐", special: true)
+        let globe = keyButton("🌐", style: .special)
         globe.addTarget(self, action: #selector(handleInputModeList(from:with:)), for: .allTouchEvents)
         globe.widthAnchor.constraint(equalToConstant: 46).isActive = true
         r4.addArrangedSubview(globe)
 
-        let space = keyButton("space", special: false)
-        space.titleLabel?.font = UIFont.systemFont(ofSize: 15)
-        space.setTitleColor(mutedColor, for: .normal)
+        let space = keyButton("space", style: .space)
         space.addTarget(self, action: #selector(spaceTapped), for: .touchDown)
         r4.addArrangedSubview(space)
 
-        let ret = keyButton("⏎", special: false)
-        ret.backgroundColor = goldColor
-        ret.setTitleColor(UIColor(hex: 0x141312), for: .normal)
+        let ret = keyButton("⏎", style: .send)
         ret.addTarget(self, action: #selector(returnTapped), for: .touchDown)
         ret.widthAnchor.constraint(equalToConstant: 66).isActive = true
         r4.addArrangedSubview(ret)
@@ -245,58 +315,110 @@ class KeyboardViewController: UIInputViewController {
         rowsContainer.addArrangedSubview(r4)
     }
 
-    private func letterKey(_ title: String) -> UIButton {
+    private func letterKey(_ title: String) -> KeyButton {
         let shown = (shiftOn && !symbolsOn) ? title.uppercased() : title
-        let b = keyButton(shown, special: false)
+        let b = keyButton(shown, style: .letter)
         b.addTarget(self, action: #selector(charTapped(_:)), for: .touchDown)
+        b.addTarget(self, action: #selector(charReleased),
+                    for: [.touchUpInside, .touchUpOutside, .touchCancel])
+        if !symbolsOn { letterButtons.append(b) }
         return b
     }
 
     private func applyColors() {
         view.backgroundColor = trayColor
         romanLabel.textColor = mutedColor
-        // The stack's colour shows through the 1pt gaps as column dividers;
-        // each chip paints over its own cell with the tray colour.
-        chipsStack.backgroundColor = dividerColor
-        for b in chipButtons { b.backgroundColor = trayColor }
+        popupView.backgroundColor = popupColor
+        popupLabel.textColor = keyTextColor
+        for sep in chipSeparators { sep.backgroundColor = separatorColor }
+        for b in chipButtons {
+            b.baseColor = .clear
+            b.pressedColor = chipFlashColor
+        }
     }
 
-    // MARK: - Press feedback
+    // MARK: - Key balloon
 
-    @objc private func pressFeedbackDown(_ sender: UIButton) {
-        sender.alpha = 0.6
+    private func showPopup(for key: UIButton) {
+        guard let title = key.currentTitle else { return }
+        let keyFrame = key.convert(key.bounds, to: view)
+        let w = max(keyFrame.width * 1.6, 50)
+        let h: CGFloat = 54
+        // Centered over the key, clamped so edge keys stay on screen.
+        var x = keyFrame.midX - w / 2
+        x = min(max(3, x), view.bounds.width - w - 3)
+        let y = keyFrame.minY - h + 2
+
+        // Appear instantly, exactly like the system keyboard balloon.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        popupView.frame = CGRect(x: x, y: y, width: w, height: h)
+        popupLabel.frame = popupView.bounds
+        popupLabel.text = title
+        popupView.isHidden = false
+        CATransaction.commit()
     }
 
-    @objc private func pressFeedbackUp(_ sender: UIButton) {
-        UIView.animate(withDuration: 0.08) { sender.alpha = 1.0 }
+    private func hidePopup() {
+        popupView.isHidden = true
+    }
+
+    // MARK: - Shift without rebuilding (rebuilding mid-touch janks and can
+    // strand the balloon, so the keys just retitle in place)
+
+    private func retitleLetterKeys() {
+        for b in letterButtons {
+            guard let t = b.currentTitle else { continue }
+            b.setTitle(shiftOn ? t.uppercased() : t.lowercased(), for: .normal)
+        }
+    }
+
+    private func updateShiftAppearance() {
+        guard let shift = shiftButton else { return }
+        if shiftOn {
+            shift.baseColor = .white
+            shift.setTitleColor(.black, for: .normal)
+        } else {
+            shift.baseColor = specialColor
+            shift.setTitleColor(keyTextColor, for: .normal)
+        }
     }
 
     // MARK: - Typing
 
     @objc private func charTapped(_ sender: UIButton) {
-        guard var t = sender.currentTitle else { return }
+        guard let t = sender.currentTitle else { return }
+        showPopup(for: sender)
+        clickFeedback()
+        buffer += shiftOn ? t : t.lowercased()
         if shiftOn && !symbolsOn {
             shiftOn = false
-            rebuildRows()
-        } else {
-            t = t.lowercased()
+            updateShiftAppearance()
+            retitleLetterKeys()
         }
-        buffer += t
         refresh()
     }
 
+    @objc private func charReleased() {
+        hidePopup()
+    }
+
     @objc private func shiftTapped() {
+        clickFeedback()
         shiftOn.toggle()
-        rebuildRows()
+        updateShiftAppearance()
+        retitleLetterKeys()
     }
 
     @objc private func modeTapped() {
+        clickFeedback()
         symbolsOn.toggle()
         shiftOn = false
         rebuildRows()
     }
 
     @objc private func spaceTapped() {
+        clickFeedback()
         if buffer.isEmpty {
             textDocumentProxy.insertText(" ")
         } else {
@@ -305,6 +427,7 @@ class KeyboardViewController: UIInputViewController {
     }
 
     @objc private func returnTapped() {
+        clickFeedback()
         commitBuffer()
         textDocumentProxy.insertText("\n")
     }
@@ -312,6 +435,7 @@ class KeyboardViewController: UIInputViewController {
     @objc private func chipTapped(_ sender: UIButton) {
         let i = sender.tag
         guard i < currentSuggestions.count else { return }
+        clickFeedback()
         let s = currentSuggestions[i]
         textDocumentProxy.insertText(s.khmer)
         if !buffer.isEmpty {
@@ -353,6 +477,7 @@ class KeyboardViewController: UIInputViewController {
     }
 
     private func doBackspace() {
+        clickFeedback()
         if !buffer.isEmpty {
             buffer.removeLast()
             refresh()
@@ -377,7 +502,40 @@ class KeyboardViewController: UIInputViewController {
                 b.setTitle(nil, for: .normal)
             }
         }
+        // A separator only makes sense between two visible columns.
+        for (i, sep) in chipSeparators.enumerated() {
+            sep.isHidden = chipButtons[i + 1].isHidden
+        }
     }
+}
+
+/// A key that swaps to its pressed color the instant a touch lands and eases
+/// back on release, copying the Apple keyboard's press feel. Keys without a
+/// pressed color (the letter keys) keep their color; the balloon is their
+/// feedback.
+private final class KeyButton: UIButton {
+    var baseColor: UIColor = .clear {
+        didSet { if !isHighlighted { backgroundColor = baseColor } }
+    }
+    var pressedColor: UIColor?
+
+    override var isHighlighted: Bool {
+        didSet {
+            guard let pressed = pressedColor else { return }
+            if isHighlighted {
+                layer.removeAllAnimations()
+                backgroundColor = pressed
+            } else {
+                UIView.animate(withDuration: 0.12) { self.backgroundColor = self.baseColor }
+            }
+        }
+    }
+}
+
+/// Lets UIDevice.playInputClick() produce the system keyboard click while the
+/// keyboard is visible (it respects the user's Sound settings).
+extension UIInputView: UIInputViewAudioFeedback {
+    public var enableInputClicksWhenVisible: Bool { true }
 }
 
 private extension UIColor {
