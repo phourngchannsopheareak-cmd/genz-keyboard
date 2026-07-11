@@ -190,13 +190,16 @@ export default function ImeApp() {
         </div>
       )}
 
-      {/* iPhone-style prediction bar: what you typed + Khmer candidates. */}
+      {/* Prediction bar: a slim line shows what you typed, then the Khmer
+          candidates fill the full width in even columns, like Apple's row. */}
       <div className="predict-bar">
-        {buffer ? (
-          <span className="predict-roman">{buffer}</span>
-        ) : (
-          <span className="predict-hint">វាយ Khmerlish ។ ឧ. jg tv pteas</span>
-        )}
+        <div className="predict-compose">
+          {buffer ? (
+            <span className="predict-roman">{buffer}</span>
+          ) : (
+            <span className="predict-hint">វាយ Khmerlish ។ ឧ. jg tv pteas</span>
+          )}
+        </div>
         <div className="predict-chips">
           {suggestions.map((s, idx) => (
             <button

@@ -51,30 +51,34 @@ body {
   font-size: 14px;
 }
 
-/* iPhone-style prediction bar (one slim row above the keys). */
+/* Prediction bar: a slim line showing what you typed, then the Khmer
+   candidates spread across the full width in even columns, like the Apple
+   keyboard's suggestion row. */
 .predict-bar {
-  height: 46px;
+  height: 66px;
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 8px;
+  flex-direction: column;
   border-top: 1px solid rgba(0, 0, 0, 0.1);
 }
 
+.predict-compose {
+  flex: 0 0 20px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+}
+
 .predict-roman {
-  flex: 0 0 auto;
-  max-width: 32%;
   font-size: 12px;
   color: #6c6c70;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .predict-hint {
-  flex: 1;
-  font-size: 13px;
+  font-size: 12px;
   color: #8a8a8e;
   white-space: nowrap;
   overflow: hidden;
@@ -85,18 +89,23 @@ body {
   flex: 1;
   display: flex;
   align-items: stretch;
-  gap: 2px;
-  overflow: hidden;
 }
 
 .predict-bar .chip {
-  flex: 1;
+  flex: 1 1 0;
   min-width: 0;
-  height: 38px;
-  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  overflow: hidden;
   background: transparent;
   border: none;
   cursor: pointer;
+}
+
+.predict-bar .chip-kh {
+  white-space: nowrap;
 }
 
 .predict-bar .chip + .chip {
@@ -104,7 +113,8 @@ body {
 }
 
 .predict-bar .chip-kh {
-  font-size: 18px;
+  font-size: 25px;
+  line-height: 1;
   color: #1c1c1e;
 }
 
@@ -254,10 +264,10 @@ body {
 /* ---- Tablets / iPad: larger keys ---- */
 @media (min-width: 600px) {
   .ime-root .predict-bar {
-    height: 56px;
+    height: 78px;
   }
   .ime-root .predict-bar .chip-kh {
-    font-size: 22px;
+    font-size: 30px;
   }
   .ime-root .keyboard {
     gap: 12px;
@@ -282,6 +292,6 @@ body {
     font-size: 26px;
   }
   .ime-root .predict-bar {
-    height: 62px;
+    height: 86px;
   }
 }

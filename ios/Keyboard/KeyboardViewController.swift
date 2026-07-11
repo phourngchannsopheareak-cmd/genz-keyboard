@@ -25,6 +25,7 @@ class KeyboardViewController: UIInputViewController {
 
     private let romanLabel = UILabel()
     private var chipButtons: [UIButton] = []
+    private let chipsStack = UIStackView()
     private let rowsContainer = UIStackView()
     private var heightSet = false
     private var delayTimer: Timer?
@@ -39,6 +40,7 @@ class KeyboardViewController: UIInputViewController {
     private var specialColor: UIColor { isDark ? UIColor(hex: 0x302C26) : UIColor(hex: 0xABAFBA) }
     private var mutedColor: UIColor { isDark ? UIColor(hex: 0x8A8578) : UIColor(hex: 0x6C6C70) }
     private var goldColor: UIColor { UIColor(hex: 0xE8A93D) }
+    private var dividerColor: UIColor { isDark ? UIColor(hex: 0x2E2B26) : UIColor(white: 0, alpha: 0.14) }
 
     // MARK: - Lifecycle
 
@@ -54,7 +56,8 @@ class KeyboardViewController: UIInputViewController {
         if !heightSet {
             heightSet = true
             let isPad = UIDevice.current.userInterfaceIdiom == .pad
-            let c = view.heightAnchor.constraint(equalToConstant: isPad ? 330 : 272)
+            // Taller than a plain keyboard to fit the two-row candidate bar.
+            let c = view.heightAnchor.constraint(equalToConstant: isPad ? 352 : 294)
             c.priority = UILayoutPriority(999)
             c.isActive = true
         }
@@ -85,32 +88,41 @@ class KeyboardViewController: UIInputViewController {
             root.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -6),
         ])
 
-        // Prediction bar: typed roman on the left, Khmer chips filling the rest.
+        // Prediction bar: a slim line with the typed romanization, then the
+        // Khmer candidates spread across the full width in even columns, like
+        // the Apple keyboard's suggestion row.
         let bar = UIStackView()
-        bar.axis = .horizontal
-        bar.spacing = 8
-        bar.alignment = .center
-        bar.heightAnchor.constraint(equalToConstant: 42).isActive = true
+        bar.axis = .vertical
+        bar.spacing = 0
+        bar.heightAnchor.constraint(equalToConstant: 64).isActive = true
 
-        romanLabel.font = UIFont.systemFont(ofSize: 13)
-        romanLabel.setContentHuggingPriority(.required, for: .horizontal)
-        romanLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        bar.addArrangedSubview(romanLabel)
+        // Top: what you typed (small, gray).
+        romanLabel.font = UIFont.systemFont(ofSize: 12)
+        let composeRow = UIStackView(arrangedSubviews: [romanLabel])
+        composeRow.isLayoutMarginsRelativeArrangement = true
+        composeRow.layoutMargins = UIEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
+        composeRow.heightAnchor.constraint(equalToConstant: 20).isActive = true
+        bar.addArrangedSubview(composeRow)
 
-        let chips = UIStackView()
-        chips.axis = .horizontal
-        chips.spacing = 2
-        chips.distribution = .fillEqually
+        // Bottom: candidate columns. The 1pt spacing over the stack's divider
+        // colour reads as thin vertical separators between columns.
+        chipsStack.axis = .horizontal
+        chipsStack.spacing = 1
+        chipsStack.distribution = .fillEqually
         for i in 0..<3 {
             let b = UIButton(type: .system)
             b.tag = i
-            b.titleLabel?.font = UIFont.systemFont(ofSize: 20)
-            b.layer.cornerRadius = 8
+            b.titleLabel?.font = UIFont.systemFont(ofSize: 25)
+            // Long candidates (whole phrases) shrink to fit their column.
+            b.titleLabel?.adjustsFontSizeToFitWidth = true
+            b.titleLabel?.minimumScaleFactor = 0.5
+            b.titleLabel?.lineBreakMode = .byClipping
+            b.contentEdgeInsets = UIEdgeInsets(top: 0, left: 4, bottom: 0, right: 4)
             b.addTarget(self, action: #selector(chipTapped(_:)), for: .touchDown)
             chipButtons.append(b)
-            chips.addArrangedSubview(b)
+            chipsStack.addArrangedSubview(b)
         }
-        bar.addArrangedSubview(chips)
+        bar.addArrangedSubview(chipsStack)
         root.addArrangedSubview(bar)
 
         rowsContainer.axis = .vertical
@@ -243,6 +255,10 @@ class KeyboardViewController: UIInputViewController {
     private func applyColors() {
         view.backgroundColor = trayColor
         romanLabel.textColor = mutedColor
+        // The stack's colour shows through the 1pt gaps as column dividers;
+        // each chip paints over its own cell with the tray colour.
+        chipsStack.backgroundColor = dividerColor
+        for b in chipButtons { b.backgroundColor = trayColor }
     }
 
     // MARK: - Press feedback

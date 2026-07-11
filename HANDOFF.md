@@ -13,7 +13,7 @@ Project root: `D:\Desktop\claude\Session\khmer-keyboard`
 |---|---|
 | Web demo | Live, working |
 | Android app | Real system keyboard, **installed & confirmed working on his phone** |
-| iPhone app | Native IPA verified correct, but **extension fails to launch on his phone even after a clean reinstall** — see LIVE HANDOFF below |
+| iPhone app | **WORKING on his phone via AltStore (2026-07-10).** Sideloadly signed the container app but not the keyboard extension correctly, so it fell back to the system Khmer keyboard. **AltStore signs the `.appex` correctly and the native keyboard now loads and types.** Full native keyboard + speller + words all live on iPhone. |
 | Spelling engine | Built in JS + Swift, tests pass, live on web + APK, **awaiting his real-world feedback** |
 
 ### Links (use these exact URL forms)
@@ -159,8 +159,22 @@ QWERTY with a `វាយ Khmerlish…` bar and 3 gold chips on top. What is happ
 
 ## LIVE HANDOFF — where the iPhone issue stands (2026-07-10, RESOLVED to signing)
 
-**Diagnosis is CLOSED: it is a code-signing rejection, not a code bug. Next step
-is a different signing path, not another Sideloadly install and not a code edit.**
+**CONFIRMED FIXED 2026-07-10: he installed the IPA via AltStore and the native
+keyboard now loads and types on his iPhone.** The signing diagnosis was right —
+AltStore signs the nested `Keyboard.appex` correctly where Sideloadly did not, so
+the `CODESIGNING / Invalid Page` SIGKILL is gone. Setup that worked: AltServer on
+the PC (had to point it at the apple.com iCloud folder
+`C:\Program Files (x86)\Common Files\Apple` via "Choose Folder"), AltStore on the
+phone, then open the `ios-latest` IPA with the `+` button in My Apps. His full
+native keyboard + spelling engine + latest words are now live on iOS.
+
+**His maintenance going forward:** the free cert still expires every 7 days, but
+AltStore refreshes over WiFi while AltServer runs on the PC on the same network.
+If the keyboard ever dies, open AltStore → My Apps → Refresh All. No cable, no
+Sideloadly. To ship future updates to his iPhone he re-opens the new IPA in
+AltStore the same way (`+` button).
+
+**(historical) Diagnosis was: code-signing rejection, not a code bug.**
 
 ### What his two answers were
 1. **Restart test:** did it. STILL BROKEN — keys still show Khmer letters after a
