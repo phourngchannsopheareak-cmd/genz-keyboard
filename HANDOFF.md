@@ -1,25 +1,31 @@
-# Genz Keyboard — handoff for the next chat
+# Genz Keyboard — handoff for the next session
 
 Khmerlish → Khmer typing keyboard for Gen-Z Cambodians. Type `jg tv pteas`, get `ចង់ទៅផ្ទះ`.
-Owner is **non-technical** (phone seller, Cambodia): give exact copy-paste steps, avoid terminal work for him, prefer zero-setup solutions. He dislikes em-dash phrasing.
+Owner is **non-technical** (phone seller, Cambodia): give exact copy-paste steps, avoid terminal work for him, prefer zero-setup solutions. **He dislikes em-dash phrasing** in chat and app copy.
 
 Project root: `D:\Desktop\claude\Session\khmer-keyboard`
 
 ---
 
-## Status (2026-07-10)
+## Status (2026-07-12) — everything works on all three platforms
 
 | Platform | State |
 |---|---|
-| Web demo | Live, working |
-| Android app | Real system keyboard, **installed & confirmed working on his phone** |
-| iPhone app | **WORKING on his phone via AltStore (2026-07-10).** Sideloadly signed the container app but not the keyboard extension correctly, so it fell back to the system Khmer keyboard. **AltStore signs the `.appex` correctly and the native keyboard now loads and types.** Full native keyboard + speller + words all live on iPhone. |
-| Spelling engine | Built in JS + Swift, tests pass, live on web + APK, **awaiting his real-world feedback** |
+| Web demo | Live, working (khmer-keyboard.pages.dev) |
+| Android app | Real system keyboard, installed and confirmed on his phone |
+| iPhone app | **Working via AltStore** (Sideloadly could not sign the keyboard extension; see gotcha 9) |
+| Dictionary | **1,027 entries** (his ~500 + countries + 9 Gen-Z short forms + 217 phone-shop words) |
+| Spelling engine | Live everywhere; spells unknown words, chips teach the dictionary |
+| My Words | View/add/delete/copy-all on all three platforms |
+| Apple feel | Balloon popup, Apple palettes, invert press, click + haptic, gap-free hit areas |
+
+He confirmed the iPhone keyboard works and typing feels right after the fast-typing fixes shipped 2026-07-12 (commit `8427e10`). No open bug reports at handoff time.
 
 ### Links (use these exact URL forms)
 
 - Web demo: https://khmer-keyboard.pages.dev
-- Web keyboard-only page: https://khmer-keyboard.pages.dev/ime.html
+- Keyboard-only page: https://khmer-keyboard.pages.dev/ime.html
+- My Words manager: https://khmer-keyboard.pages.dev/ime.html#manage
 - Repo: https://github.com/phourngchannsopheareak-cmd/genz-keyboard (GitHub user `phourngchannsopheareak-cmd`)
 - **Android APK**: `https://github.com/phourngchannsopheareak-cmd/genz-keyboard/releases/download/latest/genz-keyboard.apk`
 - **iPhone IPA**: `https://github.com/phourngchannsopheareak-cmd/genz-keyboard/releases/download/ios-latest/GenzKeyboard.ipa`
@@ -28,328 +34,129 @@ Project root: `D:\Desktop\claude\Session\khmer-keyboard`
 
 ---
 
+## How to ship a change
+
+```bash
+npm test                 # 77 checks: converter, suggestions, speller, JS/Swift parity
+npm run eval             # speller accuracy vs his hand-checked words (report, not pass/fail)
+npm run prompt           # regenerate GEMINI-PROMPT.txt after ANY dictionary merge
+npm run build            # dist/index.html + self-contained dist/ime.html
+npx wrangler pages deploy dist --project-name khmer-keyboard --branch main --commit-dirty=true
+git pull && git add -A && git commit -m "..." && git push
+```
+
+Pushing to `main` rebuilds **both** apps automatically:
+- `.github/workflows/build-apk.yml` → signed `genz-keyboard.apk` on release tag `latest`
+- `.github/workflows/build-ios.yml` → unsigned `GenzKeyboard.ipa` on release tag `ios-latest`
+
+Watch CI without the API (gotcha 6): poll the release files' `Last-Modified` headers. iOS failures publish `xcodebuild.log` to release tag `ios-log`; if that file's timestamp becomes fresh, the Swift did not compile.
+
+**His update flow after a push:** Android = reinstall the APK link. iPhone = download the IPA in Safari, then AltStore → My Apps → `+` → pick the file.
+
+---
+
 ## Architecture
 
-**One brain, three faces.** The dictionary + conversion + suggestion logic exists twice: once in JS (web + Android), once ported to Swift (iOS).
+**One brain, three faces.** Dictionary + conversion + suggestion + spelling logic exists twice: JS (web + Android WebView) and a Swift port (iOS native).
 
 ```
-src/dictionary.json   801 entries, romanized -> Khmer (single words + phrases)
-src/spell.js          spell(word, limit) -> candidate Khmer spellings, rules only
+src/dictionary.json   1,027 entries, romanized -> Khmer (words + phrases)
+src/spell.js          spell(word, limit) -> candidate Khmer spellings from rules
 src/converter.js      convert(input, dict) -> {text, tokens}
 src/suggest.js        suggest(context, dict, learned) -> ranked candidates
-src/host.js           bridge: window.AndroidIME | window.webkit.messageHandlers.genz | browser mock
-src/ImeApp.jsx        keyboard-only UI (used by Android WebView + web preview)
-src/App.jsx           the chat-style demo site
+src/host.js           bridge: window.AndroidIME | webkit genz handler | browser mock
+src/ImeApp.jsx        keyboard UI + WordsManager (ime.html#manage)
+src/App.jsx           chat-style demo site (has My Words modal + Copy All)
 ime.html              entry for the keyboard-only page
-android/              Kotlin. WebView-based IME (loads bundled ime.html)
-ios/                  Swift. FULLY NATIVE keyboard (NO WebView)
+scripts/gemini-prompt.mjs   regenerates GEMINI-PROMPT.txt from the dictionary
+android/              Kotlin. WebView IME + SetupActivity + WordsActivity
+ios/                  Swift. FULLY NATIVE keyboard (NO WebView). XcodeGen project
 ```
 
-### The spelling engine (`src/spell.js`, mirrored in `ios/Keyboard/Speller.swift`)
+### The spelling engine (`src/spell.js` ⇄ `ios/Keyboard/Speller.swift`)
 
-Types any word, not just dictionary words. A syllable is
-`[onset consonants][vowel][coda]`; onset consonants after the first hang below
-as subscripts (coeng, `ជើង`), so `pteah` -> `ផ្ទះ`.
+Spells ANY word from Khmer orthography rules: syllable = onset + vowel + coda, extra onset consonants hang as subscripts (coeng), so `pteah` → `ផ្ទះ`. Khmer writes each consonant sound in two series (`t` = ត or ទ) and romanization loses that, so it offers 2-3 candidates as gold chips; **tapping one saves it to the custom dictionary**, so each word only ever needs spelling once. Accuracy (`npm run eval`): top-3 ≈ 39% on his slang corpus, ≈ 77% on ordinary Khmer words. Loanwords/Pali spellings (`akun` → អរគុណ) and vowel-less shorthand (`jg`) are dictionary-only by nature.
 
-The reason it returns 2-3 answers instead of 1: Khmer writes every consonant
-sound twice, once in the **a-series** and once in the **o-series** (`t` = ត or ទ).
-Romanized text throws that away. The vowel sign sounds different per series, so
-the series constraint prunes most candidates, but not all. The user taps the
-right chip and **it is saved to `khmer-custom-dict`**, so the dictionary grows
-by itself and that word is a plain match forever after.
+### Mirroring rules (things exist twice and drift)
 
-Accuracy (`npm run eval`, measured against his own hand-checked words):
+- **Engine:** change `converter.js` / `suggest.js` / `spell.js` → mirror in `ios/Keyboard/Engine.swift` / `Speller.swift`. `test/ios-parity.mjs` (in `npm test`) diffs the speller **tables** (Khmer letters + weights) between the two files; it cannot check algorithms, so scoring changes are mirrored by hand. Keep declaration order identical or the check breaks.
+- **UI:** `src/ImeApp.jsx` + `src/ime.css` (web/Android) ⇄ `KeyboardViewController.swift` (iOS). No auto-check. Verify web in the browser, port to Swift by eye.
 
-| corpus | old `guess()` | `spell()` top-1 | in top 3 |
-|---|---|---|---|
-| his 469 real words | 8.7% | 22.8% | 38.8% |
-| 30 ordinary Khmer words | — | 40% | 77% |
+### The Apple feel (his explicit requirement)
 
-His corpus scores lower because it is mostly slang, abbreviations and
-loanwords, which is exactly the vocabulary that had to be typed in by hand.
-Both numbers are honest: the dictionary still answers first, and the speller
-only fills the chip slots the dictionary leaves empty.
+- **Balloon popup** with the tapped letter above the finger. Instant on touch, quick fade on release. Letter keys do NOT dim; the balloon is the feedback.
+- **Invert press:** gray function keys flip to white while held, space flips to gray, return darkens. Snap on press, 0.12s ease back.
+- **Apple palettes** light and dark (dark is Apple grays, not the brand brown). Gold only on return + speller chips.
+- **Click feel:** iOS plays the system click (`UIInputViewAudioFeedback` extension + `playInputClick`) + light haptic (needs Full Access). Android gets `navigator.vibrate(8)`.
+- Web drives press states with a JS `pressed` class because `preventDefault()` on pointerdown kills `:active` in Chrome/WebView (the old `:active` balloon NEVER showed on Android).
+- **Prediction bar is two-tier:** slim typed-romanization line on top, Khmer candidates full-width in even columns below (his feedback: side-by-side looked small).
 
-### Android = WebView keyboard (works great)
-`android/app/src/main/java/com/reak/khmerkeyboard/KhmerImeService.kt` hosts a WebView loading `file:///android_asset/keyboard/ime.html`, with a JS bridge (`commit/space/enter/backspace/switchKeyboard`). `SetupActivity.kt` is the launcher screen.
+### Fast-typing smoothness (2026-07-12, load-bearing, do not undo)
 
-### iOS = fully native (WebView was fatal)
-`ios/Keyboard/Engine.swift` is a Swift port of `converter.js` + `suggest.js`, reading `dictionary.json` from the bundle.
-`ios/Keyboard/KeyboardViewController.swift` is a programmatic UIKit QWERTY.
-Xcode project is **generated by XcodeGen** from `ios/project.yml` (there is no committed `.xcodeproj`).
+- **Gap-free hit areas.** Keys claim half of every gutter. Web: `.key::before { inset: -6px -4px }` (App.css). iOS: `KeyButton.hitInsets` PLUS the `KeyRow` UIStackView subclass; a stack view refuses hit-tests outside its bounds, so without KeyRow the expanded key areas are unreachable in row gutters (the subtle part).
+- **Balloon ownership** (`popupOwner`): rolled typing lifts finger 1 after finger 2 is down; only the owning key hides the balloon.
+- **Per-keystroke cost:** `Engine.suggest` scans a first-letter bucket, not all 1,027 entries (buckets built in init, appended/updated in `accept`, including re-taught keys); the speller is skipped when the dictionary already filled the strip (mirrored in suggest.js, output-identical); hot-path regexes replaced with character walks (NSRegularExpression recompiles per call); balloon has an explicit `shadowPath` (else it re-rasterizes offscreen every keystroke); `haptic.prepare()` after each impact keeps the Taptic Engine warm.
+- iOS shift retitles keys in place instead of rebuilding rows (rebuild mid-touch janks and strands the balloon).
 
-**⚠ If you change `converter.js`, `suggest.js` or `spell.js`, you must mirror the change in `ios/Keyboard/Engine.swift` / `Speller.swift`.** They can drift.
-`test/ios-parity.mjs` (part of `npm test`) now catches drift in the speller's
-**tables** by comparing the Khmer letters and weights in both files. It cannot
-check the algorithm, so scoring changes still have to be mirrored by hand, and
-the two files are kept in the same declaration order for the check to work.
+### My Words (view / add / delete / copy out) — all platforms
 
-The **keyboard UI also lives twice** and can drift: the on-screen layout is in
-`src/ImeApp.jsx` + `src/ime.css` (web + Android WebView) and re-implemented
-natively in `ios/Keyboard/KeyboardViewController.swift`. The prediction bar is
-two-tier: a slim line with the typed romanization on top, then the Khmer
-candidates across the full width in even columns (Apple-style), redone in both
-places 2026-07-10 on his feedback that the old side-by-side layout looked small.
-No auto-check for this; verify web in the browser and mirror to Swift by hand.
+One manager page `ime.html#manage` (`WordsManager` in ImeApp.jsx): list, add, delete, **Copy All as JSON**, plus an always-visible JSON box for manual copy where clipboard APIs refuse (file:// WebViews).
+- **Web:** khmer-keyboard.pages.dev/ime.html#manage; the demo's My Words modal also has Copy All.
+- **Android:** launcher button "My words" opens `WordsActivity` (WebView on the bundled ime.html#manage). WebViews in one app share localStorage, so it edits the keyboard's REAL words. Verified: add in manager → instant dictionary-match chip in keyboard.
+- **iPhone:** **hold the space bar 1 second** → the keyboard TYPES the saved words as JSON into the open app (extensions cannot share files without an App Group, which free signing breaks; typing is the export). Space acts on touch-up so the long press works.
+- His words → me → `src/dictionary.json` is how personal words become shipped words for everyone.
 
-**Apple keyboard feel (2026-07-11, his request).** Both UIs copy the system
-keyboard's press behavior: a balloon with the tapped letter pops above the
-finger (letter keys do NOT dim; the balloon IS the feedback), gray function
-keys invert to white while pressed and space inverts to gray (snap on press,
-0.12s ease back on release), Apple palettes in light AND dark (dark is no
-longer the brand brown; gold stays only on return + speller chips). iOS also
-plays the system click (`UIInputViewAudioFeedback` extension +
-`playInputClick`) and a light haptic (needs Full Access, silently skipped
-without). Web drives all of it with a JS `pressed` class because
-`preventDefault()` on pointerdown kills `:active` in Chrome/WebView (the old
-`:active`-based balloon never actually showed on Android). Android also gets
-`navigator.vibrate(8)` per press. iOS shift now retitles keys in place instead
-of rebuilding rows (rebuild mid-touch janked and could strand the balloon).
+---
 
-**Fast-typing smoothness (2026-07-12, his complaint: "can't type fast").**
-The load-bearing fixes, do not undo casually:
-- **Gap-free hit areas.** Keys claim half of every gutter. Web: `.key::before`
-  with `inset: -6px -4px` (App.css). iOS: `KeyButton.hitInsets` PLUS the
-  `KeyRow` UIStackView subclass — a stack view refuses hit-tests outside its
-  bounds, so without KeyRow the keys' expanded areas are unreachable in the
-  row gutters (the subtle part).
-- **Balloon ownership.** Rolled typing lifts finger 1 after finger 2 is down;
-  only the balloon's owning key may hide it (`popupOwner`).
-- **Per-keystroke cost.** `Engine.suggest` scans a first-letter bucket, not
-  all 1000+ entries (buckets rebuilt in init, appended/updated in `accept`);
-  the speller is skipped when the dictionary already filled the strip
-  (mirrored in suggest.js, output-identical); hot-path regexes replaced with
-  character walks (regex recompiles per call in Swift); the balloon has an
-  explicit `shadowPath` (otherwise every keystroke re-rasterizes offscreen);
-  `haptic.prepare()` after every impact keeps the Taptic Engine warm.
+## Growing the dictionary (the working batch workflow)
+
+1. He opens `GEMINI-PROMPT.txt`, copies ALL of it into a fresh Gemini chat. It contains the format rules AND a do-not-repeat list of all current keys (this cut repeats from 123-of-132 to 0-of-236).
+2. He sends Gemini a category line (e.g. `food and drink words`), pastes Gemini's JSON back to us.
+3. We clean + merge with a dry run first (a `clean-merge.mjs` style script; see commit `895a0e2` for the drop rules). **Drop:** keys with non-latin chars/accents; spelled-out-number values (`128gb` → words); semantic overrides of common words. The critical guard: **`luy` must stay លុយ (money)**, `knong` = ក្នុង. Conflicts keep the existing value.
+4. `npm test` (must stay green), `npm run prompt` (refresh the exclusion list), build, deploy, push.
+5. Suggested next categories he has NOT done: food/drink, money/numbers/time, family, love/flirting, feelings, school/work, travel/places.
+   Done already: Gen-Z chat (mostly known), phone-shop (217 words, 2026-07-11).
+
+Target ~2,000-3,000 curated entries, not 10K raw: nobody can verify 10K spellings, junk crowds the suggestion strip, and the speller + chip-teaching grows the long tail by itself.
 
 ---
 
 ## Hard-won gotchas (do not relearn these)
 
-1. **iOS keyboard extensions have a tiny memory limit (~60–70MB).** A WKWebView keyboard gets killed instantly and iOS silently falls back to the user's next keyboard (looked like "it switches to Khmer keyboard"). This is why iOS is native. **Do not put a WebView in the iOS keyboard.**
-2. **Android WebView blocks ES-module scripts from `file://`.** So `ime.html` is built as ONE self-contained file via `vite-plugin-singlefile` using a separate config `vite.ime.config.js` (MPA + singlefile cannot combine in one pass). `npm run build` runs both builds; the ime build uses `emptyOutDir: false`.
-3. **An Android IME view has no natural height** and collapses to zero. `KhmerImeService` sets an explicit height (300dp).
+1. **iOS keyboard extensions have a tiny memory limit (~60-70MB).** A WKWebView keyboard gets killed instantly and iOS silently falls back to another keyboard. This is why iOS is native. **Never put a WebView in the iOS keyboard.**
+2. **Android WebView blocks ES-module scripts from `file://`.** `ime.html` is ONE self-contained file via `vite-plugin-singlefile` with separate config `vite.ime.config.js` (MPA + singlefile cannot combine); the ime build uses `emptyOutDir: false`.
+3. **An Android IME view has no natural height** and collapses to zero. `KhmerImeService` sets explicit height (300dp) and resizes via the JS `resize` bridge.
 4. **iOS builds need macos-15 + Xcode 16.** Xcode 15.4 fails with `future Xcode project file format (77)` from XcodeGen.
-5. **GitHub Actions logs are 403 without auth.** The iOS workflow therefore publishes `xcodebuild.log` to a release tagged `ios-log` on failure. Fetch it anonymously via the release download URL.
-6. **The anonymous GitHub API rate-limits fast (60/hr).** Don't tight-loop `api.github.com`. Poll the release asset's `Last-Modified` header via `github.com` download URLs instead.
-7. **Android signing:** CI generates `android/app/genz.keystore` once and commits it back with `[skip ci]` (passwords `genzkeystore`, alias `genz`). Because of that auto-commit, **always `git pull` before pushing.** Updates now install over the old app (no uninstall).
-8. **Never rename these localStorage keys:** `khmer-custom-dict` (user's own words), `khmer-learned-v1` (`{picks, words}`). iOS equivalents are `UserDefaults` keys `genz-picks` / `genz-words`.
-
----
-
-## How to ship a change
-
-```bash
-npm test                 # 77 checks: converter, suggestions, speller, JS/Swift parity
-npm run eval             # speller accuracy vs the hand-checked words (not pass/fail)
-npm run build            # builds dist/index.html + self-contained dist/ime.html
-npx wrangler pages deploy dist --project-name khmer-keyboard --branch main --commit-dirty=true
-git pull && git add -A && git commit -m "..." && git push
-```
-Pushing to `main` rebuilds **both** apps automatically:
-- `.github/workflows/build-apk.yml` → signed `genz-keyboard.apk` on release tag `latest`
-- `.github/workflows/build-ios.yml` → unsigned `GenzKeyboard.ipa` on release tag `ios-latest`
-
----
-
-## iPhone install (his flow, free 7-day sideload)
-
-Uses **Sideloadly** on Windows + iTunes/iCloud from apple.com (not Microsoft Store).
-
-Painful truths already discovered:
-- His **first Apple ID got locked** by Apple during a Sideloadly login (error -20209). His **second iCloud works**. Use only the second one for sideloading.
-- On iOS 26.x, Sideloadly failed with `(35) No value was provided for the parameter 'name'` until the **iPhone was renamed to a plain name** (Settings → General → About → Name → `iPhone`).
-- iOS then requires **Developer Mode** (Settings → Privacy & Security → Developer Mode → on → restart).
-- Then: Settings → General → Keyboard → Keyboards → Add New Keyboard → Genz Keyboard. (Native build should not need "Allow Full Access", but it's requested in the plist.)
-- The free cert **expires every 7 days**; re-run Sideloadly to refresh.
-
-He asked about "install like Delta" (tap-a-link, no cable). Explained: Delta-style uses **abused enterprise certificates**, against Apple's rules, revoked constantly. Legit equivalent is **TestFlight, $99/year**. He has NOT paid; recommendation on the table is grow on Android (free, one-tap link) and add TestFlight when iPhone demand is real. AltStore/SideStore were offered to remove the weekly cable, not yet set up.
-
----
-
-## iPhone "it shows a Khmer keyboard" — diagnosed 2026-07-10
-
-He switched to Genz Keyboard and got a **Khmer letter keyboard** (Khmer glyphs on
-the keys, space bar `ដកឃ្លា`). That is **not** our keyboard — ours is a Latin
-QWERTY with a `វាយ Khmerlish…` bar and 3 gold chips on top. What is happening:
-
-- The extension declares `PrimaryLanguage = km-KH` (`ios/Keyboard/Info.plist`).
-  When a keyboard extension **fails to launch**, iOS substitutes the system
-  keyboard for that primary language, i.e. the **system Khmer keyboard**. So the
-  Khmer keyboard IS the "our extension did not load" symptom, not a fallback to
-  his English keyboard.
-- The **current `ios-latest` IPA was verified correct**: native (no WebKit in the
-  binary), `UIInputViewController` + `KeyboardViewController` + `Speller` present,
-  resolved principal class `Keyboard.KeyboardViewController`, extension point
-  `com.apple.keyboard-service`, bundle id `com.reak.genzkeyboard.keyboard`. The
-  code path in `KeyboardViewController.viewDidLoad` has no trap.
-- So the build is not the problem. **UPDATE: he did a full clean reinstall of the
-  newest IPA (deleted the app first, downloaded fresh) and it STILL shows the
-  system Khmer keyboard.** That rules out the stale-install theory. The app
-  container opens fine and Genz Keyboard appears in the switcher, but selecting it
-  falls back — so the **extension process fails to launch**, while the container
-  app is signed fine.
-- Because the container app runs but the extension does not, the most likely
-  cause is the free-cert sideload not getting the **nested `.appex`** to run
-  (signing/provisioning of the extension), which no code change fixes. A launch
-  crash is possible but `viewDidLoad` / `Engine.init` / `Speller` were code
-  reviewed and have no trap.
-
-## LIVE HANDOFF — where the iPhone issue stands (2026-07-10, RESOLVED to signing)
-
-**CONFIRMED FIXED 2026-07-10: he installed the IPA via AltStore and the native
-keyboard now loads and types on his iPhone.** The signing diagnosis was right —
-AltStore signs the nested `Keyboard.appex` correctly where Sideloadly did not, so
-the `CODESIGNING / Invalid Page` SIGKILL is gone. Setup that worked: AltServer on
-the PC (had to point it at the apple.com iCloud folder
-`C:\Program Files (x86)\Common Files\Apple` via "Choose Folder"), AltStore on the
-phone, then open the `ios-latest` IPA with the `+` button in My Apps. His full
-native keyboard + spelling engine + latest words are now live on iOS.
-
-**His maintenance going forward:** the free cert still expires every 7 days, but
-AltStore refreshes over WiFi while AltServer runs on the PC on the same network.
-If the keyboard ever dies, open AltStore → My Apps → Refresh All. No cable, no
-Sideloadly. To ship future updates to his iPhone he re-opens the new IPA in
-AltStore the same way (`+` button).
-
-**(historical) Diagnosis was: code-signing rejection, not a code bug.**
-
-### What his two answers were
-1. **Restart test:** did it. STILL BROKEN — keys still show Khmer letters after a
-   full power off/on and the Allow Full Access toggle. So a reboot does not fix it.
-2. **Analytics Data check:** entries DO exist. He opened the `Keyboard-2026-07-10`
-   `.ips`. The decisive fields:
-   - `procPath: .../GenzKeyboard.app/PlugIns/Keyboard.appex/Keyboard` (our extension did try to launch)
-   - `exception type EXC_BAD_ACCESS, signal SIGKILL, subtype KERN_PROTECTION_FAILURE`
-   - **`termination namespace CODESIGNING, indicator "Invalid Page"`**
-   - context: iPhone15,3 (iPhone 13 Pro Max), iOS 26.2.1, `codeSigningTeamID 2R74FR674S`,
-     rewritten bundle id `com.reak.genzkeyboard.2R74FR674S.keyboard` (free-cert unique-id rewrite, normal).
-
-### What that means
-An entry existing looked like the "extension is crashing, go fix the code" branch,
-but the **actual termination reason is CODESIGNING / Invalid Page**. iOS killed the
-extension at page-in because a code page failed signature validation. That is the
-**signing branch**, not a fault in `viewDidLoad` / `Engine.init` / `Speller`. The
-outer app is signed and opens; the nested `Keyboard.appex` did not get a valid
-signature from the free 7-day sideload, so the OS SIGKILLs it instantly and falls
-back to the system Khmer keyboard. **No change to our Swift fixes this.** The
-`RequestsOpenAccess = false` lever also does not help (Open Access is a runtime
-permission, not a launch gate; this dies before that matters).
-
-### Path forward (pick one, told to him in plain steps)
-- **AltStore / SideStore** — try FIRST. Free, same Apple ID, but it manages the
-  developer signature itself and is generally better at signing **nested app
-  extensions** and auto-refreshing every 7 days than Sideloadly. Not guaranteed
-  (still free provisioning), but the cheapest thing that could actually work.
-- **TestFlight ($99/yr Apple Developer)** — the durable, boring, always-works fix.
-  Proper signing, no cable, no weekly refresh, install by a link (his "like Delta"
-  wish, done legitimately). Recommend this the moment iPhone demand is real.
-- **Meanwhile Android already works** (one-tap APK link, confirmed on his phone).
-  That stays the growth path; iPhone is best-effort until AltStore works or he pays.
-
-Do NOT ask him to Sideloadly-install again — same tool = same signing wall.
-
-### AltStore attempt (2026-07-10, evening) — FAILED on his Windows machine
-We tried the free AltStore route to get a better nested-`.appex` signature. Full
-play-by-play so nobody repeats it:
-- AltServer installed and ran; iPhone (named **`Pong`**, not `iPhone`) showed up as a
-  connected device once iTunes saw it.
-- His iTunes was the **Microsoft Store** version → AltServer "iTunes Not Found".
-  Uninstalled it, installed **apple.com iTunes** (`C:\Program Files\iTunes`). iTunes
-  then saw `Pong` fine (device listed in sidebar).
-- "Install AltStore" prompted for Apple ID, he entered the **second** (working) Apple
-  ID, clicked OK → **nothing installed on the phone, no notification, no error**, every
-  time. Repeated several times.
-- Root cause surfaced late: AltServer reported **"iCloud not found"**. AltStore on
-  Windows needs **iCloud from apple.com**, not the Store version. Tried the legacy
-  2020 `iCloudSetup.exe`
-  (`https://updates.cdn-apple.com/2020/windows/001-39935-20200911-1A70AA56-F448-11EA-8CC0-99D41950005E/iCloudSetup.exe`)
-  and pointing AltServer at `C:\Program Files\Common Files\Apple` via Choose Folder.
-  **Still "nothing shows up"** — the legacy iCloud never registered properly on his
-  Windows (likely Win11 + Media Feature Pack / too-old build), so AltServer could not
-  generate anisette data to sign in, so the install died silently.
-- Also note he said his Apple ID sends **no verification code** on sign-in, i.e. it may
-  **lack two-factor auth**, which free Apple signing requires — another possible
-  silent-fail cause worth checking before ever retrying AltStore.
-- **He got very distressed during this.** Called it off. Do not drag him back through
-  AltStore/Sideloadly cold. It is a genuinely hostile setup for a non-technical user on
-  Windows.
-
-### KEY FINDING (2026-07-10, late) — it's an iOS-VERSION wall, not a hard free-cert wall
-He revealed our keyboard **works on his iPad**, and the iPad is on **iOS 17.7.10**
-while the failing iPhone is on **iOS 26.2.1**. This reframes the whole diagnosis:
-- Free-cert sideloading **can** sign and run our keyboard extension — proven on iOS 17.
-- iOS 26's stricter runtime code-signing enforcement (the `codeSigningMonitor: 2` /
-  `CODESIGNING Invalid Page` SIGKILL in his crash log) is what kills the free-signed
-  `.appex` on the iPhone. Older iOS (17.x) does not enforce this hard, so it runs.
-- So the earlier "free cert can't sign keyboards" line was **too strong** — correct
-  statement is "free-cert extensions get killed on iOS 26, but run on iOS 17."
-- Practical upshot: **he has a working Apple device today (the iPad on iOS 17)**. Pivoted
-  him to actually USE + test it there, including the untested speller words
-  (`chnam`, `borng`, `pibak`) — this is the pending real-world feedback loop.
-- For the iPhone specifically, the durable fix is still the **paid account** (a strong/
-  paid cert satisfies iOS 26's checks). Do NOT keep him on the free iPhone treadmill.
-- Open question for next session: is the iPad keyboard the current build or an old one?
-  Confirm it shows QWERTY + `វាយ Khmerlish` bar. If old, a fresh free-sign to the iPad
-  is low-risk since iOS 17 accepts it.
-
-### DECISION: iPhone is parked. Recommend TestFlight when he's ready.
-Free sideloading (Sideloadly AND AltStore) cannot reliably sign the nested keyboard
-`.appex` on his setup. The only durable iPhone fix is **TestFlight ($99/yr Apple
-Developer)**: proper signing, install-by-link, no cable, no weekly refresh — matches his
-"install like Delta" wish, legitimately. Android is the live growth path (one-tap APK,
-confirmed working). When he opts into the $99, walk him through enrollment + TestFlight
-slowly; that removes every failure mode hit above. Do NOT reopen the free route.
-
-**Prepared-but-not-done lever** (only if useful after the above): set
-`RequestsOpenAccess = false` in `ios/Keyboard/Info.plist`. The native keyboard
-does not need Full Access and `UserDefaults.standard` still persists learned
-words without it; this drops the "Allow Full Access" step and one entitlement
-failure mode. Note this likely does NOT fix a pure signing rejection (Open Access
-is a runtime permission, not a launch gate), so do not oversell it to him.
-
-**Do not** make him sideload again until his two answers above come back — every
-install is a painful cable+Sideloadly cycle for a non-technical user, and the
-current build is already verified correct.
-
-### The spelling engine (shipped this session) is a SEPARATE, working track
-It is live on web + in the APK and fully tested. When the iPhone finally loads,
-also have him try words NOT in the dictionary (`chnam`, `borng`, `pibak`) and
-confirm the right Khmer is among the 3 gold chips; tapping one saves it.
+5. **GitHub Actions logs are 403 without auth.** The iOS workflow publishes `xcodebuild.log` to release tag `ios-log` on failure; fetch it anonymously via the release download URL.
+6. **Anonymous GitHub API rate-limits fast (60/hr).** Poll release assets' `Last-Modified` via `github.com` download URLs, not `api.github.com` loops.
+7. **Android signing:** CI generated `android/app/genz.keystore` once and committed it back with `[skip ci]` (passwords `genzkeystore`, alias `genz`). **Always `git pull` before pushing.** Updates install over the old app.
+8. **Never rename these storage keys:** localStorage `khmer-custom-dict` (own words) and `khmer-learned-v1` (`{picks, words}`); iOS `UserDefaults` `genz-picks` / `genz-words` / `genz-custom`.
+9. **iPhone signing (the week-long saga, resolved):** Sideloadly signs the container app but NOT the nested `Keyboard.appex` in a way iOS 26 accepts → extension dies at launch with `CODESIGNING / Invalid Page` SIGKILL and iOS silently shows the **system Khmer keyboard** instead (because our plist says `PrimaryLanguage km-KH`). That fallback Khmer keyboard IS the "extension failed to launch" symptom. **AltStore signs the appex correctly and is his working install path.** Same free cert runs fine on his iPad (iOS 17.7), so it is an iOS-26 enforcement wall, not a universal free-cert wall. The durable paid fix remains TestFlight ($99/yr) if AltStore ever breaks.
+10. **AltServer on Windows needs apple.com iTunes AND apple.com iCloud** (never Microsoft Store versions). When AltServer says "iCloud Not Found", use its **Choose Folder** and point it at `C:\Program Files (x86)\Common Files\Apple` (folder must contain `Apple Application Support` + `Internet Services`). His first-ever AltStore attempt failed on a broken legacy iCloud install; the fix above worked on the second attempt. The 7-day cert auto-refreshes over WiFi while AltServer runs on the same network; if the keyboard dies, AltStore → My Apps → Refresh All.
+11. **His Apple IDs:** the first got locked by Apple during sideloading (error -20209); only the **second iCloud** is used. The iPhone was renamed to a plain name to fix Sideloadly error 35 (historical).
+12. **Free-cert bundle ids get rewritten** (`com.reak.genzkeyboard.2R74FR674S.keyboard`); that is normal, not a bug.
 
 ---
 
 ## Backlog (his priorities, roughly in order)
 
-1. ~~**Spelling engine**~~ **BUILT (2026-07-10), not yet confirmed by him.** Rules
-   spell any word; 2-3 candidates show as chips; tapping one saves it. See the
-   architecture section above. Worth asking him to try words that are NOT in the
-   dictionary and tell us which chip he taps, since that is the whole feedback
-   loop. Remaining weaknesses, in order of how often they bite:
-   - Loanwords and Pali/Sanskrit spellings are unreachable by rules
-     (`akun` → អរគុណ, `chet` → ចិត្ត). They must stay dictionary entries.
-   - The subscript-at-syllable-junction case is weakly ranked (`angkor` → អង្គរ).
-   - Vowel-less shorthand (`jg`, `btb`) can never be spelled; dictionary only.
-2. **His phone-shop vocabulary** (he was going to send words from his Telegram orders: brands, deposit, delivery, installment, second-hand).
+1. **Real-world speller feedback.** He types with it daily now; ask which gold chips are wrong or missing. Known weak spots: loanwords/Pali need dictionary entries; `angkor`-style subscript-at-junction is weakly ranked; vowel-less shorthand is dictionary-only.
+2. **More word batches** via the Gemini workflow above (food/drink next).
 3. **No-spaces auto-split** so `jgtvpteas` splits into words.
-4. Typo tolerance (`srolan` → ស្រឡាញ់ without listing every variant).
-5. Next-word prediction (bigrams).
-6. ~~"Share my words" export~~ **BUILT (2026-07-11) as "My Words" on all three
-   platforms.** One manager page (`ime.html#manage`, rendered by `WordsManager`
-   in `src/ImeApp.jsx`) lists/adds/deletes/copies the device's saved words as
-   JSON. Web: khmer-keyboard.pages.dev/ime.html#manage (the demo's My Words
-   modal also has Copy All now). Android: launcher app button "My words" opens
-   `WordsActivity`, a WebView on the same bundled ime.html#manage; WebViews in
-   one app share localStorage, so it edits the keyboard's real words (verified
-   in browser: word added in manager immediately becomes a match chip in the
-   keyboard). iPhone: **hold the space bar 1s** and the keyboard TYPES the
-   saved words as JSON into the open app (keyboard extensions cannot share
-   files without an App Group, which free-cert sideloading breaks; typing is
-   the export). Space moved to touch-up so the long press works.
-7. App icons for iOS (currently default) and a nicer Android icon.
+4. **Typo tolerance** (`srolan` → ស្រឡាញ់ without listing every variant).
+5. **Next-word prediction** (bigrams).
+6. **App icons**: iOS is default, Android could be nicer.
+7. (Someday) TestFlight if AltStore becomes a burden or he wants tap-a-link installs for testers.
 
-## Words he already gave (all merged, 801 entries)
+## Word-merge decisions already made (do not re-litigate)
 
-He supplied ~330 real Khmerlish spellings plus ~170 country names. Decisions made when his entries conflicted: `ko`=ក៏, `mon`=មុន, `tuk`=ទុក, `chol`=ចោល, `der`=ដែរ (walk = `daer`), `sl`=ស្រឡាញ់, `oy`=ឱ្យ, `mish`=ម៉េច. Spellings I normalized: `klirn`→ក្លិន, `dor`→ដ៏, `krr os`→ក៏អស់, `j'rik`→ចរិត.
-Flagged as possibly wrong but kept verbatim (worth re-asking him): `hork`=ហហ, `klat`=ខ្លាត, `tork`=តុក, `meban`=មេបាយ, `krep`=ប្រៃ, `kork lok`=កូឡុក, `zambia`=សំប៊ី, `cyprus`=ស៊ីពរ៍.
+His original entries: `ko`=ក៏, `mon`=មុន, `tuk`=ទុក, `chol`=ចោល, `der`=ដែរ (walk = `daer`), `sl`=ស្រឡាញ់, `oy`=ឱ្យ, `mish`=ម៉េច. Normalized: `klirn`→ក្លិន, `dor`→ដ៏, `krr os`→ក៏អស់, `j'rik`→ចរិត. Flagged as possibly wrong but kept verbatim (worth re-asking him someday): `hork`=ហហ, `klat`=ខ្លាត, `tork`=តុក, `meban`=មេបាយ, `krep`=ប្រៃ, `kork lok`=កូឡុក, `zambia`=សំប៊ី, `cyprus`=ស៊ីពរ៍.
+From the phone-shop batch, deliberately dropped: `luy`→តម្លៃ, `khnong`→មេម៉ូរី, `jeung`→ជាង (all would break common words), all `%`/GB spelled-out-number keys, and keys containing Khmer characters.
+
+## Session history (compact)
+
+- **2026-07-08/09:** Web demo built + deployed; Android WebView IME built, works on his phone; his ~500 words merged.
+- **2026-07-09/10:** iOS WebView keyboard died (memory limit) → full native rewrite (Engine + programmatic UIKit).
+- **2026-07-10:** Sideloadly installed the app but the keyboard extension was SIGKILLed (`CODESIGNING`); long diagnosis; first AltStore attempt failed on broken iCloud; discovered the same build WORKS on his iOS-17 iPad. Spelling engine built (JS + Swift + parity test), chips teach the dictionary.
+- **2026-07-11 (this session):** AltStore fixed via the Choose Folder trick → **iPhone works**. Apple-style suggestion bar (two-tier, full width). 9 short forms + 217 phone-shop words merged (dictionary 1,027). Apple keyboard feel shipped (balloon, palettes, invert press, click + haptic). My Words manager on all platforms + copy-all export + iOS hold-space export.
+- **2026-07-12:** Fast-typing fixes (gap-free hit areas incl. the KeyRow trick, balloon ownership, bucketed suggest, speller skip, shadowPath, haptic prepare). He confirmed it feels good. `npm run prompt` script added. This handoff rewritten.
