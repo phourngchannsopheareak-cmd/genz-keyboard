@@ -498,6 +498,8 @@ class KeyboardViewController: UIInputViewController {
         clickFeedback()
         commitBuffer()
         textDocumentProxy.insertText("\n")
+        // A new line is a new thought; don't predict across the break.
+        engine.resetChain()
     }
 
     @objc private func chipTapped(_ sender: UIButton) {
@@ -510,6 +512,7 @@ class KeyboardViewController: UIInputViewController {
         if !buffer.isEmpty {
             engine.accept(typed: buffer, suggestion: s)
         }
+        engine.wordAccepted(s.khmer)
         buffer = ""
         refresh()
     }
@@ -527,6 +530,7 @@ class KeyboardViewController: UIInputViewController {
         }
         removeTypedRomanization()
         textDocumentProxy.insertText(khmer)
+        engine.wordAccepted(khmer)
         buffer = ""
         refresh()
     }

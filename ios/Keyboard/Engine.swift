@@ -17,6 +17,15 @@ final class Engine {
     /// Words the user taught by tapping a spelling chip. Merged over the
     /// bundled dictionary, so a word only ever has to be spelled once.
     private var custom: [String: String]
+    /// How often one accepted Khmer word is followed by another, so the
+    /// suggestion strip can predict the next word before any letter is
+    /// typed. Keyed by the previous word, then the word that followed it.
+    private var bigrams: [String: [String: Int]]
+    /// The last Khmer word actually inserted into the text field. Only
+    /// held in memory (not persisted): it resets if the extension process
+    /// is relaunched, and chaining across an app switch is a rare enough
+    /// edge case not worth the complexity of tracking properly.
+    private var lastAccepted: String?
     private let defaults = UserDefaults.standard
 
     /// The dictionary bucketed by first letter. suggest() runs on every
@@ -29,6 +38,7 @@ final class Engine {
         picks = (defaults.dictionary(forKey: "genz-picks") as? [String: String]) ?? [:]
         words = (defaults.dictionary(forKey: "genz-words") as? [String: Int]) ?? [:]
         custom = (defaults.dictionary(forKey: "genz-custom") as? [String: String]) ?? [:]
+        bigrams = (defaults.dictionary(forKey: "genz-bigrams") as? [String: [String: Int]]) ?? [:]
         if let url = Bundle.main.url(forResource: "dictionary", withExtension: "json", subdirectory: "Web"),
            let data = try? Data(contentsOf: url),
            let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: String] {
@@ -155,9 +165,11 @@ final class Engine {
     ]
 
     enum Kind {
-        case match  // straight out of the dictionary
-        case spell  // built from the orthography rules; tapping it teaches it
-        case guess  // letter-by-letter fallback for a word with no vowel
+        case match    // straight out of the dictionary
+        case fuzzy    // dictionary word within a small typo distance
+        case spell    // built from the orthography rules; tapping it teaches it
+        case guess    // letter-by-letter fallback for a word with no vowel
+        case predict  // next-word guess shown before any letter is typed
     }
 
     struct Suggestion {
@@ -166,8 +178,15 @@ final class Engine {
         let kind: Kind
         let replaceWords: Int
 
-        /// Anything not from the dictionary is shown low-confidence (gold).
-        var isGuess: Bool { kind != .match }
+        /// A confirmed dictionary word (typed exactly or predicted from
+        /// history) reads as confident; a typo-matched, spelled, or
+        /// letter-guessed word is shown low-confidence (gold).
+        var isGuess: Bool {
+            switch kind {
+            case .match, .predict: return false
+            case .fuzzy, .spell, .guess: return true
+            }
+        }
     }
 
     /// True for text the suggester can work with: lowercase words of a-z and
@@ -184,7 +203,11 @@ final class Engine {
 
     func suggest(_ context: String, limit: Int = 3) -> [Suggestion] {
         let ctx = context.lowercased().trimmingCharacters(in: .whitespaces)
-        guard Engine.isTypable(ctx) else { return [] }
+        guard Engine.isTypable(ctx) else {
+            // Nothing typed yet: offer what usually follows the last word
+            // that actually made it into the text, if anything does.
+            return ctx.isEmpty ? predictNext(limit: limit) : []
+        }
         let wordsArr = ctx.split(separator: " ").map(String.init)
         let maxN = min(3, wordsArr.count)
 
@@ -213,6 +236,19 @@ final class Engine {
 
         guard let last = wordsArr.last else { return out }
 
+        // A small typo (missing/extra/wrong letter) still finds the real
+        // dictionary word, ranked below any exact match. Only worth trying
+        // once the word looks like a real attempt, and only within the
+        // same first-letter bucket already used above, for the same
+        // per-keystroke cost reason as the bucketing itself.
+        if out.count < limit && last.count >= 3 {
+            var taken = Set(out.map { $0.khmer })
+            for s in fuzzyMatches(last, excluding: taken, limit: limit - out.count) {
+                guard taken.insert(s.khmer).inserted else { continue }
+                out.append(s)
+            }
+        }
+
         // Top up the strip with rule-based spellings of the last word. Tapping
         // one teaches it, so a word only has to be spelled once. Skipped
         // entirely when the dictionary already filled the strip: the speller
@@ -232,6 +268,79 @@ final class Engine {
             out = [Suggestion(key: last, khmer: guess(last), kind: .guess, replaceWords: 1)]
         }
         return out
+    }
+
+    /// Real dictionary words within a short edit distance of `word`, ranked
+    /// worse than an exact match but better than a rules-based spelling
+    /// guess. Distance grows a little with word length so "srolan" still
+    /// finds ស្រឡាញ់ (missing a letter) without short words matching
+    /// almost anything.
+    private func fuzzyMatches(_ word: String, excluding: Set<String>, limit: Int) -> [Suggestion] {
+        guard limit > 0, let first = word.first, let bucket = buckets[first] else { return [] }
+        let maxDist = word.count <= 4 ? 1 : (word.count <= 8 ? 2 : 3)
+        var scored: [(Suggestion, Int)] = []
+        for (key, khmer) in bucket {
+            if key == word || excluding.contains(khmer) { continue }
+            if abs(key.count - word.count) > maxDist { continue }
+            let d = Engine.levenshtein(word, key, cutoff: maxDist)
+            guard d <= maxDist else { continue }
+            var score = 300 - d * 80
+            score += (words[khmer] ?? 0) * 40
+            score += (Engine.freq[khmer] ?? 0) * 10
+            scored.append((Suggestion(key: key, khmer: khmer, kind: .fuzzy, replaceWords: 1), score))
+        }
+        return scored.sorted { $0.1 > $1.1 }.prefix(limit).map { $0.0 }
+    }
+
+    /// Edit distance between two short romanized words, with an early exit
+    /// once every cell in a row is already past the cutoff (cheap enough to
+    /// run per keystroke against a whole first-letter bucket).
+    private static func levenshtein(_ a: String, _ b: String, cutoff: Int) -> Int {
+        let a = Array(a), b = Array(b)
+        if a.isEmpty { return b.count }
+        if b.isEmpty { return a.count }
+        var prev = Array(0...b.count)
+        for i in 1...a.count {
+            var cur = [Int](repeating: 0, count: b.count + 1)
+            cur[0] = i
+            var rowMin = i
+            for j in 1...b.count {
+                let cost = a[i - 1] == b[j - 1] ? 0 : 1
+                cur[j] = min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost)
+                rowMin = min(rowMin, cur[j])
+            }
+            if rowMin > cutoff { return cutoff + 1 }
+            prev = cur
+        }
+        return prev[b.count]
+    }
+
+    /// What usually comes after the last word the user actually committed,
+    /// shown before they type a single letter of the next word.
+    private func predictNext(limit: Int) -> [Suggestion] {
+        guard let prev = lastAccepted, let nexts = bigrams[prev], !nexts.isEmpty else { return [] }
+        return nexts.sorted { $0.value > $1.value }.prefix(limit).map {
+            Suggestion(key: "", khmer: $0.key, kind: .predict, replaceWords: 0)
+        }
+    }
+
+    /// Call after any Khmer word actually lands in the text field (typed,
+    /// spelled, fuzzy-matched, or predicted) to extend the next-word chain.
+    func wordAccepted(_ khmer: String) {
+        guard !khmer.isEmpty else { return }
+        if let prev = lastAccepted {
+            var nexts = bigrams[prev] ?? [:]
+            nexts[khmer] = (nexts[khmer] ?? 0) + 1
+            bigrams[prev] = nexts
+            defaults.set(bigrams, forKey: "genz-bigrams")
+        }
+        lastAccepted = khmer
+    }
+
+    /// Breaks the next-word chain, e.g. on a new line, so a prediction never
+    /// spans two unrelated thoughts.
+    func resetChain() {
+        lastAccepted = nil
     }
 
     /// Accepting a chip: record the pick, and save a spelling as a new word.
