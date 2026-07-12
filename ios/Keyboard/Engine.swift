@@ -255,6 +255,33 @@ final class Engine {
         learn(typed: key, khmer: s.khmer)
     }
 
+    /// Merges words taught outside the keyboard (the container app's My Words
+    /// screen). Keys may be single words or spaced phrases, like the shipped
+    /// dictionary. Returns how many entries were new or changed.
+    func addWords(_ entries: [String: String]) -> Int {
+        var changed = 0
+        for (rawKey, khmer) in entries {
+            let key = rawKey.lowercased().trimmingCharacters(in: .whitespaces)
+            guard !key.isEmpty, !khmer.isEmpty, !key.contains("  "),
+                  key.allSatisfy({ $0 == "'" || $0 == " " || ($0 >= "a" && $0 <= "z") })
+            else { continue }
+            if custom[key] == khmer { continue }
+            custom[key] = khmer
+            let isNew = dict[key] == nil
+            dict[key] = khmer
+            if let f = key.first {
+                if isNew {
+                    buckets[f, default: []].append((key, khmer))
+                } else if let idx = buckets[f]?.firstIndex(where: { $0.key == key }) {
+                    buckets[f]?[idx].khmer = khmer
+                }
+            }
+            changed += 1
+        }
+        if changed > 0 { defaults.set(custom, forKey: "genz-custom") }
+        return changed
+    }
+
     func learn(typed: String, khmer: String) {
         picks[typed] = khmer
         words[khmer] = (words[khmer] ?? 0) + 1

@@ -77,6 +77,14 @@ class KeyboardViewController: UIInputViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        // A word left half-typed when the keyboard last closed is already in
+        // the text as plain letters; forgetting it keeps a later commit from
+        // deleting text the user has since edited.
+        if !buffer.isEmpty {
+            buffer = ""
+            refresh()
+        }
+        importAppWords()
         if !heightSet {
             heightSet = true
             let isPad = UIDevice.current.userInterfaceIdiom == .pad
@@ -93,6 +101,22 @@ class KeyboardViewController: UIInputViewController {
         applyColors()
         rebuildRows()
         refresh()
+    }
+
+    /// Words added in the container app's My Words screen arrive on a private
+    /// same-team named pasteboard. There is no App Group to share a file
+    /// through (free-cert sideloading does not sign one reliably), and
+    /// reading a pasteboard needs Full Access, which the keyboard already
+    /// asks for. The app rewrites the payload whenever its list changes, so
+    /// merging on every appearance is idempotent and self-heals a reinstall.
+    private func importAppWords() {
+        guard let board = UIPasteboard(name: UIPasteboard.Name(rawValue: "com.reak.genzkeyboard.words"), create: false),
+              let json = board.string, !json.isEmpty,
+              let data = json.data(using: .utf8),
+              let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: String],
+              !obj.isEmpty
+        else { return }
+        if engine.addWords(obj) > 0 { refresh() }
     }
 
     // MARK: - Click feel
@@ -413,7 +437,11 @@ class KeyboardViewController: UIInputViewController {
         guard let t = sender.currentTitle else { return }
         showPopup(for: sender)
         clickFeedback()
-        buffer += shiftOn ? t : t.lowercased()
+        let ch = shiftOn ? t : t.lowercased()
+        buffer += ch
+        // The letter lands in the text field right away, like the system
+        // keyboard; committing swaps the typed letters for the Khmer.
+        textDocumentProxy.insertText(ch)
         if shiftOn && !symbolsOn {
             shiftOn = false
             updateShiftAppearance()
@@ -477,6 +505,7 @@ class KeyboardViewController: UIInputViewController {
         guard i < currentSuggestions.count else { return }
         clickFeedback()
         let s = currentSuggestions[i]
+        removeTypedRomanization()
         textDocumentProxy.insertText(s.khmer)
         if !buffer.isEmpty {
             engine.accept(typed: buffer, suggestion: s)
@@ -496,9 +525,21 @@ class KeyboardViewController: UIInputViewController {
         } else {
             khmer = engine.convert(buffer)
         }
+        removeTypedRomanization()
         textDocumentProxy.insertText(khmer)
         buffer = ""
         refresh()
+    }
+
+    /// The typed letters are already in the text field (inserted live). They
+    /// come back out before the Khmer goes in, but only when the text right
+    /// before the cursor really is the buffer: if the user moved the cursor
+    /// somewhere else, deleting blind would eat text that is not ours.
+    private func removeTypedRomanization() {
+        guard !buffer.isEmpty else { return }
+        let before = textDocumentProxy.documentContextBeforeInput ?? ""
+        guard before.hasSuffix(buffer) else { return }
+        for _ in buffer { textDocumentProxy.deleteBackward() }
     }
 
     @objc private func backspaceDown() {
@@ -518,11 +559,12 @@ class KeyboardViewController: UIInputViewController {
 
     private func doBackspace() {
         clickFeedback()
+        // The letters were typed into the field live, so the field loses one
+        // either way; the buffer just shrinks with it while composing.
+        textDocumentProxy.deleteBackward()
         if !buffer.isEmpty {
             buffer.removeLast()
             refresh()
-        } else {
-            textDocumentProxy.deleteBackward()
         }
     }
 

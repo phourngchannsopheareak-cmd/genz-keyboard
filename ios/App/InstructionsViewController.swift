@@ -46,5 +46,20 @@ class InstructionsViewController: UIViewController {
         field.font = .systemFont(ofSize: 18)
         field.heightAnchor.constraint(equalToConstant: 48).isActive = true
         stack.addArrangedSubview(field)
+
+        let wordsButton = UIButton(type: .system)
+        wordsButton.setTitle("My Words", for: .normal)
+        wordsButton.setTitleColor(view.backgroundColor, for: .normal)
+        wordsButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
+        wordsButton.backgroundColor = gold
+        wordsButton.layer.cornerRadius = 10
+        wordsButton.heightAnchor.constraint(equalToConstant: 48).isActive = true
+        wordsButton.addTarget(self, action: #selector(openWords), for: .touchUpInside)
+        stack.addArrangedSubview(wordsButton)
+        stack.addArrangedSubview(label("Add your own words there. The keyboard learns them the next time you open it.", 13, muted))
+    }
+
+    @objc private func openWords() {
+        present(WordsViewController(), animated: true)
     }
 }
