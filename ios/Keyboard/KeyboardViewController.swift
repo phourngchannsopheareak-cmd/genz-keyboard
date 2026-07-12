@@ -39,6 +39,7 @@ class KeyboardViewController: UIInputViewController {
     private var heightSet = false
     private var delayTimer: Timer?
     private var repeatTimer: Timer?
+    private var spaceLongPressFired = false
 
     // The balloon that shows which letter is under the finger.
     private let popupView = UIView()
@@ -303,8 +304,15 @@ class KeyboardViewController: UIInputViewController {
         globe.widthAnchor.constraint(equalToConstant: 46).isActive = true
         r4.addArrangedSubview(globe)
 
+        // Space acts on release (like Apple's) so a long press can be the
+        // words-export gesture: hold space and the keyboard types the saved
+        // words as JSON into the open app, ready to copy and send.
         let space = keyButton("space", style: .space)
-        space.addTarget(self, action: #selector(spaceTapped), for: .touchDown)
+        space.addTarget(self, action: #selector(spaceTapped), for: .touchUpInside)
+        let hold = UILongPressGestureRecognizer(target: self, action: #selector(spaceHeld(_:)))
+        hold.minimumPressDuration = 0.6
+        hold.cancelsTouchesInView = false
+        space.addGestureRecognizer(hold)
         r4.addArrangedSubview(space)
 
         let ret = keyButton("⏎", style: .send)
@@ -418,12 +426,27 @@ class KeyboardViewController: UIInputViewController {
     }
 
     @objc private func spaceTapped() {
+        // A long press already did the export; swallow the release.
+        if spaceLongPressFired {
+            spaceLongPressFired = false
+            return
+        }
         clickFeedback()
         if buffer.isEmpty {
             textDocumentProxy.insertText(" ")
         } else {
             commitBuffer()
         }
+    }
+
+    /// Hold space: type out the saved words as JSON so they can be copied
+    /// from any app (Notes, Telegram) and sent anywhere.
+    @objc private func spaceHeld(_ gesture: UILongPressGestureRecognizer) {
+        guard gesture.state == .began else { return }
+        spaceLongPressFired = true
+        clickFeedback()
+        commitBuffer()
+        textDocumentProxy.insertText(engine.exportCustomJSON())
     }
 
     @objc private func returnTapped() {

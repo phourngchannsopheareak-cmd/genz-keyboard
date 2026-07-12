@@ -318,9 +318,18 @@ confirm the right Khmer is among the 3 gold chips; tapping one saves it.
 3. **No-spaces auto-split** so `jgtvpteas` splits into words.
 4. Typo tolerance (`srolan` → ស្រឡាញ់ without listing every variant).
 5. Next-word prediction (bigrams).
-6. "Share my words" export button so testers can send him their custom words.
-   Now more valuable than before: the speller means his custom dictionary
-   actually grows as he types.
+6. ~~"Share my words" export~~ **BUILT (2026-07-11) as "My Words" on all three
+   platforms.** One manager page (`ime.html#manage`, rendered by `WordsManager`
+   in `src/ImeApp.jsx`) lists/adds/deletes/copies the device's saved words as
+   JSON. Web: khmer-keyboard.pages.dev/ime.html#manage (the demo's My Words
+   modal also has Copy All now). Android: launcher app button "My words" opens
+   `WordsActivity`, a WebView on the same bundled ime.html#manage; WebViews in
+   one app share localStorage, so it edits the keyboard's real words (verified
+   in browser: word added in manager immediately becomes a match chip in the
+   keyboard). iPhone: **hold the space bar 1s** and the keyboard TYPES the
+   saved words as JSON into the open app (keyboard extensions cannot share
+   files without an App Group, which free-cert sideloading breaks; typing is
+   the export). Space moved to touch-up so the long press works.
 7. App icons for iOS (currently default) and a nicer Android icon.
 
 ## Words he already gave (all merged, 801 entries)

@@ -49,6 +49,7 @@ export default function App() {
   const [showWords, setShowWords] = useState(false);
   const [newRoman, setNewRoman] = useState("");
   const [newKhmer, setNewKhmer] = useState("");
+  const [copyMsg, setCopyMsg] = useState("");
   const [shiftOn, setShiftOn] = useState(false);
   const [page, setPage] = useState("letters"); // "letters" | "symbols"
   const chatRef = useRef(null);
@@ -142,6 +143,31 @@ export default function App() {
     localStorage.setItem(CUSTOM_KEY, JSON.stringify(next));
     setNewRoman("");
     setNewKhmer("");
+  }
+
+  // Copy every custom word as JSON, so they can be pasted anywhere (Telegram,
+  // a note, back to the developer to merge into the shipped dictionary).
+  async function copyAllWords() {
+    const json = JSON.stringify(custom, null, 2);
+    const n = Object.keys(custom).length;
+    try {
+      await navigator.clipboard.writeText(json);
+      setCopyMsg(`Copied ${n} words. Paste them anywhere.`);
+      return;
+    } catch {
+      /* clipboard API refused; fall back to the selection trick */
+    }
+    const area = document.createElement("textarea");
+    area.value = json;
+    document.body.appendChild(area);
+    area.select();
+    try {
+      document.execCommand("copy");
+      setCopyMsg(`Copied ${n} words. Paste them anywhere.`);
+    } catch {
+      setCopyMsg("Copy failed. Select the words and copy by hand.");
+    }
+    document.body.removeChild(area);
   }
 
   function removeWord(roman) {
@@ -333,6 +359,12 @@ export default function App() {
               <button className="modal-save" onClick={saveWord}>
                 Save
               </button>
+            </div>
+            <div className="modal-form">
+              <button className="modal-save" onClick={copyAllWords}>
+                Copy all ({Object.keys(custom).length})
+              </button>
+              {copyMsg && <span className="modal-hint">{copyMsg}</span>}
             </div>
             <div className="word-list">
               {Object.keys(custom).length === 0 ? (

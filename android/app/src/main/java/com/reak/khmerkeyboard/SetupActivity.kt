@@ -63,6 +63,9 @@ class SetupActivity : Activity() {
             (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager)
                 .showInputMethodPicker()
         }
+        button("My words  (see, add, copy)") {
+            startActivity(Intent(this, WordsActivity::class.java))
+        }
 
         text("Then tap the box below and type  jg tv pteas", 14f, "#8a8578")
 

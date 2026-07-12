@@ -6,7 +6,7 @@ import baseDictionary from "./dictionary.json";
 import "./App.css";
 import "./ime.css";
 
-const CUSTOM_KEY = "khmer-custom-dict";
+export const CUSTOM_KEY = "khmer-custom-dict";
 const LEARNED_KEY = "khmer-learned-v1";
 
 const LETTER_ROWS = [
@@ -311,6 +311,144 @@ export default function ImeApp() {
             ⏎
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// "My Words" manager. Full-screen page opened with ime.html#manage: from the
+// Android launcher app (a WebView sharing the keyboard's localStorage) or on
+// the web. Lists the words this device has saved (typed chips + manual adds),
+// lets the owner add and delete, and copies everything out as JSON so the
+// words can be sent anywhere (Telegram, to the developer, another phone).
+// ---------------------------------------------------------------------------
+export function WordsManager() {
+  const [custom, setCustom] = useState(loadCustom);
+  const [roman, setRoman] = useState("");
+  const [khmer, setKhmer] = useState("");
+  const [status, setStatus] = useState("");
+  const areaRef = useRef(null);
+
+  const entries = Object.entries(custom).sort((a, b) => a[0].localeCompare(b[0]));
+  const json = JSON.stringify(custom, null, 2);
+
+  function persist(next) {
+    setCustom(next);
+    localStorage.setItem(CUSTOM_KEY, JSON.stringify(next));
+  }
+
+  function add() {
+    const r = roman.trim().toLowerCase();
+    const k = khmer.trim();
+    if (!r || !k) {
+      setStatus("Fill both boxes first");
+      return;
+    }
+    if (!/^[a-z0-9' ]+$/.test(r)) {
+      setStatus("Left box must be English letters (a-z)");
+      return;
+    }
+    persist({ ...custom, [r]: k });
+    setRoman("");
+    setKhmer("");
+    setStatus(`Saved "${r}"`);
+  }
+
+  function remove(r) {
+    const next = { ...custom };
+    delete next[r];
+    persist(next);
+    setStatus(`Removed "${r}"`);
+  }
+
+  // Copy is best-effort in three steps: the clipboard API (https), then the
+  // old execCommand path (file:// WebView), and if both refuse, the JSON box
+  // below is selected so one long-press Copy finishes the job.
+  async function copyAll() {
+    const area = areaRef.current;
+    try {
+      await navigator.clipboard.writeText(json);
+      setStatus(`Copied ${entries.length} words. Paste them anywhere.`);
+      return;
+    } catch {
+      /* fall through to the selection path */
+    }
+    if (area) {
+      area.focus();
+      area.select();
+      try {
+        if (document.execCommand("copy")) {
+          setStatus(`Copied ${entries.length} words. Paste them anywhere.`);
+          return;
+        }
+      } catch {
+        /* fall through */
+      }
+      setStatus("Selected. Long-press the box and tap Copy.");
+    }
+  }
+
+  return (
+    <div className="manage-root">
+      <h1 className="manage-title">My Words</h1>
+      <p className="manage-hint">
+        Words saved on this device: the gold chips you tapped while typing,
+        plus anything you add here. The keyboard uses them right away. Copy
+        All puts them in your clipboard so you can paste them anywhere.
+      </p>
+
+      <div className="manage-form">
+        <input
+          value={roman}
+          onChange={(e) => setRoman(e.target.value)}
+          placeholder="typing, ex: bby"
+          autoCapitalize="none"
+          autoCorrect="off"
+        />
+        <input
+          className="manage-kh"
+          value={khmer}
+          onChange={(e) => setKhmer(e.target.value)}
+          placeholder="Khmer, ex: សង្សារ"
+        />
+        <button className="manage-add" onClick={add}>
+          Save
+        </button>
+      </div>
+
+      <div className="manage-actions">
+        <button className="manage-copy" onClick={copyAll}>
+          Copy all ({entries.length})
+        </button>
+        <span className="manage-status">{status}</span>
+      </div>
+
+      <textarea
+        ref={areaRef}
+        className="manage-json"
+        readOnly
+        value={json}
+        rows={Math.min(10, entries.length + 2)}
+      />
+
+      <div className="manage-list">
+        {entries.length === 0 ? (
+          <div className="manage-empty">
+            No saved words yet. Type on the keyboard and tap a gold chip, or
+            add one above.
+          </div>
+        ) : (
+          entries.map(([r, k]) => (
+            <div className="manage-row" key={r}>
+              <span className="manage-roman">{r}</span>
+              <span className="manage-word">{k}</span>
+              <button className="manage-del" onClick={() => remove(r)}>
+                delete
+              </button>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );

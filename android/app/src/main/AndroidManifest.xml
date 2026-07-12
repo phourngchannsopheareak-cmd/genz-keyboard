@@ -17,6 +17,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".WordsActivity"
+            android:label="My Words"
+            android:exported="false" />
+
         <service
             android:name=".KhmerImeService"
             android:label="Genz Keyboard"

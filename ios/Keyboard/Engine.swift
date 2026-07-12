@@ -228,4 +228,16 @@ final class Engine {
         defaults.set(picks, forKey: "genz-picks")
         defaults.set(words, forKey: "genz-words")
     }
+
+    /// The user's own saved words as JSON. The keyboard types this out on a
+    /// space-bar long press, because a keyboard extension has no other way to
+    /// hand data to the user (no shared files without an App Group, which
+    /// free-cert sideloading does not sign reliably).
+    func exportCustomJSON() -> String {
+        if custom.isEmpty { return "{}" }
+        let body = custom.sorted { $0.key < $1.key }
+            .map { "  \"\($0.key)\": \"\($0.value)\"" }
+            .joined(separator: ",\n")
+        return "{\n\(body)\n}"
+    }
 }
