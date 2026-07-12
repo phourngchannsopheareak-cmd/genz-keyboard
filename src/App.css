@@ -351,6 +351,17 @@ body {
   transition: none;
 }
 
+/* Fast typing constantly lands in the gutters between keys, so every key
+   claims half of each gap around it (keys sit 6-8px apart, rows 11-12px).
+   Adjacent claims may overlap by a pixel; the later key in the row wins the
+   overlap, which slightly favors the key on the right, like Apple. No pixel
+   of the keyboard is dead. */
+.key::before {
+  content: "";
+  position: absolute;
+  inset: -6px -4px;
+}
+
 .key-char {
   min-width: 0;
 }

@@ -106,6 +106,23 @@ without). Web drives all of it with a JS `pressed` class because
 `navigator.vibrate(8)` per press. iOS shift now retitles keys in place instead
 of rebuilding rows (rebuild mid-touch janked and could strand the balloon).
 
+**Fast-typing smoothness (2026-07-12, his complaint: "can't type fast").**
+The load-bearing fixes, do not undo casually:
+- **Gap-free hit areas.** Keys claim half of every gutter. Web: `.key::before`
+  with `inset: -6px -4px` (App.css). iOS: `KeyButton.hitInsets` PLUS the
+  `KeyRow` UIStackView subclass — a stack view refuses hit-tests outside its
+  bounds, so without KeyRow the keys' expanded areas are unreachable in the
+  row gutters (the subtle part).
+- **Balloon ownership.** Rolled typing lifts finger 1 after finger 2 is down;
+  only the balloon's owning key may hide it (`popupOwner`).
+- **Per-keystroke cost.** `Engine.suggest` scans a first-letter bucket, not
+  all 1000+ entries (buckets rebuilt in init, appended/updated in `accept`);
+  the speller is skipped when the dictionary already filled the strip
+  (mirrored in suggest.js, output-identical); hot-path regexes replaced with
+  character walks (regex recompiles per call in Swift); the balloon has an
+  explicit `shadowPath` (otherwise every keystroke re-rasterizes offscreen);
+  `haptic.prepare()` after every impact keeps the Taptic Engine warm.
+
 ---
 
 ## Hard-won gotchas (do not relearn these)

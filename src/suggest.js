@@ -70,14 +70,18 @@ export function suggest(context, dict, learned, limit = 3) {
     .map(({ key, khmer, type, replaceWords }) => ({ key, khmer, type, replaceWords }));
 
   // Top up the strip with rule-based spellings of the last word. Tapping one
-  // teaches it, so a word only ever has to be spelled once.
+  // teaches it, so a word only ever has to be spelled once. Skipped when the
+  // dictionary already filled the strip: the speller is the most expensive
+  // step of a keystroke and its output would be thrown away.
   const last = words[words.length - 1];
-  const taken = new Set(out.map((c) => c.khmer));
-  for (const khmer of spell(last, limit)) {
-    if (out.length >= limit) break;
-    if (taken.has(khmer)) continue;
-    taken.add(khmer);
-    out.push({ key: last, khmer, type: "spell", replaceWords: 1 });
+  if (out.length < limit) {
+    const taken = new Set(out.map((c) => c.khmer));
+    for (const khmer of spell(last, limit)) {
+      if (out.length >= limit) break;
+      if (taken.has(khmer)) continue;
+      taken.add(khmer);
+      out.push({ key: last, khmer, type: "spell", replaceWords: 1 });
+    }
   }
 
   // A word with no vowel at all (xyz) has no syllable to spell. Fall back to

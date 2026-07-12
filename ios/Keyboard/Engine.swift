@@ -19,6 +19,12 @@ final class Engine {
     private var custom: [String: String]
     private let defaults = UserDefaults.standard
 
+    /// The dictionary bucketed by first letter. suggest() runs on every
+    /// keystroke, and scanning all 1000+ entries three times per tap is the
+    /// difference between keeping up with fast typing and lagging behind it;
+    /// a prefix can only match keys that start with its own first letter.
+    private var buckets: [Character: [(key: String, khmer: String)]] = [:]
+
     private init() {
         picks = (defaults.dictionary(forKey: "genz-picks") as? [String: String]) ?? [:]
         words = (defaults.dictionary(forKey: "genz-words") as? [String: Int]) ?? [:]
@@ -29,6 +35,9 @@ final class Engine {
             dict = obj
         }
         dict.merge(custom) { _, mine in mine }
+        for (k, v) in dict {
+            if let f = k.first { buckets[f, default: []].append((k, v)) }
+        }
     }
 
     // MARK: - Conversion
@@ -161,19 +170,29 @@ final class Engine {
         var isGuess: Bool { kind != .match }
     }
 
+    /// True for text the suggester can work with: lowercase words of a-z and
+    /// apostrophes, single spaces between them. This runs per keystroke, so
+    /// it is a character walk, not a regular expression (those recompile the
+    /// pattern on every call).
+    private static func isTypable(_ s: String) -> Bool {
+        if s.isEmpty || s.hasPrefix(" ") || s.hasSuffix(" ") || s.contains("  ") { return false }
+        for ch in s where !(ch == " " || ch == "'" || (ch >= "a" && ch <= "z")) {
+            return false
+        }
+        return true
+    }
+
     func suggest(_ context: String, limit: Int = 3) -> [Suggestion] {
         let ctx = context.lowercased().trimmingCharacters(in: .whitespaces)
-        guard !ctx.isEmpty,
-              ctx.range(of: "^[a-z']+( [a-z']+)*$", options: .regularExpression) != nil else {
-            return []
-        }
+        guard Engine.isTypable(ctx) else { return [] }
         let wordsArr = ctx.split(separator: " ").map(String.init)
         let maxN = min(3, wordsArr.count)
 
         var best: [String: (key: String, score: Int, n: Int)] = [:]
         for n in 1...maxN {
             let tail = wordsArr.suffix(n).joined(separator: " ")
-            for (key, khmer) in dict {
+            guard let first = tail.first else { continue }
+            for (key, khmer) in buckets[first] ?? [] {
                 if key != tail && !key.hasPrefix(tail) { continue }
                 var score = 0
                 if picks[tail] == khmer { score += 1000 }
@@ -195,12 +214,17 @@ final class Engine {
         guard let last = wordsArr.last else { return out }
 
         // Top up the strip with rule-based spellings of the last word. Tapping
-        // one teaches it, so a word only has to be spelled once.
-        var taken = Set(out.map { $0.khmer })
-        for khmer in Speller.spell(last, limit: limit) {
-            if out.count >= limit { break }
-            guard taken.insert(khmer).inserted else { continue }
-            out.append(Suggestion(key: last, khmer: khmer, kind: .spell, replaceWords: 1))
+        // one teaches it, so a word only has to be spelled once. Skipped
+        // entirely when the dictionary already filled the strip: the speller
+        // is the most expensive step of a keystroke and its output would be
+        // thrown away.
+        if out.count < limit {
+            var taken = Set(out.map { $0.khmer })
+            for khmer in Speller.spell(last, limit: limit) {
+                if out.count >= limit { break }
+                guard taken.insert(khmer).inserted else { continue }
+                out.append(Suggestion(key: last, khmer: khmer, kind: .spell, replaceWords: 1))
+            }
         }
 
         // A word with no vowel at all (xyz) has no syllable to spell.
@@ -214,9 +238,18 @@ final class Engine {
     func accept(typed: String, suggestion s: Suggestion) {
         let key = typed.lowercased()
         if s.kind == .guess { return }
-        if s.kind == .spell, key.range(of: "^[a-z']+$", options: .regularExpression) != nil {
+        if s.kind == .spell, !key.isEmpty,
+           key.allSatisfy({ $0 == "'" || ($0 >= "a" && $0 <= "z") }) {
             custom[key] = s.khmer
+            let isNew = dict[key] == nil
             dict[key] = s.khmer
+            if let f = key.first {
+                if isNew {
+                    buckets[f, default: []].append((key, s.khmer))
+                } else if let idx = buckets[f]?.firstIndex(where: { $0.key == key }) {
+                    buckets[f]?[idx].khmer = s.khmer
+                }
+            }
             defaults.set(custom, forKey: "genz-custom")
         }
         learn(typed: key, khmer: s.khmer)

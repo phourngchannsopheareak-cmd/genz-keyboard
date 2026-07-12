@@ -41,9 +41,13 @@ class KeyboardViewController: UIInputViewController {
     private var repeatTimer: Timer?
     private var spaceLongPressFired = false
 
-    // The balloon that shows which letter is under the finger.
+    // The balloon that shows which letter is under the finger. The owner is
+    // the key currently showing it: with rolled fast typing the previous
+    // finger lifts AFTER the next key is already down, and its release must
+    // not hide the next key's balloon.
     private let popupView = UIView()
     private let popupLabel = UILabel()
+    private weak var popupOwner: UIButton?
 
     private let haptic = UIImpactFeedbackGenerator(style: .light)
 
@@ -99,6 +103,9 @@ class KeyboardViewController: UIInputViewController {
     private func clickFeedback() {
         UIDevice.current.playInputClick()
         haptic.impactOccurred()
+        // Keep the Taptic Engine warm; a cold engine adds latency to the
+        // next tap, which reads as lag when typing fast.
+        haptic.prepare()
     }
 
     // MARK: - UI construction
@@ -139,6 +146,7 @@ class KeyboardViewController: UIInputViewController {
         for i in 0..<3 {
             let b = KeyButton(frame: .zero)
             b.tag = i
+            b.hitInsets = .zero // chips sit flush; no gaps to claim
             b.titleLabel?.font = UIFont.systemFont(ofSize: 25)
             // Long candidates (whole phrases) shrink to fit their column.
             b.titleLabel?.adjustsFontSizeToFitWidth = true
@@ -233,7 +241,7 @@ class KeyboardViewController: UIInputViewController {
         let rows = symbolsOn ? symbolRows : letterRows
 
         // Row 1
-        let r1 = UIStackView()
+        let r1 = KeyRow()
         r1.axis = .horizontal
         r1.spacing = 6
         r1.distribution = .fillEqually
@@ -241,7 +249,7 @@ class KeyboardViewController: UIInputViewController {
         rowsContainer.addArrangedSubview(r1)
 
         // Row 2 (indented on the letters page, like iOS)
-        let r2 = UIStackView()
+        let r2 = KeyRow()
         r2.axis = .horizontal
         r2.spacing = 6
         r2.distribution = .fillEqually
@@ -253,7 +261,7 @@ class KeyboardViewController: UIInputViewController {
         rowsContainer.addArrangedSubview(r2)
 
         // Row 3: shift + letters + backspace
-        let r3 = UIStackView()
+        let r3 = KeyRow()
         r3.axis = .horizontal
         r3.spacing = 6
         r3.distribution = .fill
@@ -289,7 +297,7 @@ class KeyboardViewController: UIInputViewController {
         rowsContainer.addArrangedSubview(r3)
 
         // Row 4: 123 / globe / space / return
-        let r4 = UIStackView()
+        let r4 = KeyRow()
         r4.axis = .horizontal
         r4.spacing = 6
         r4.distribution = .fill
@@ -327,7 +335,7 @@ class KeyboardViewController: UIInputViewController {
         let shown = (shiftOn && !symbolsOn) ? title.uppercased() : title
         let b = keyButton(shown, style: .letter)
         b.addTarget(self, action: #selector(charTapped(_:)), for: .touchDown)
-        b.addTarget(self, action: #selector(charReleased),
+        b.addTarget(self, action: #selector(charReleased(_:)),
                     for: [.touchUpInside, .touchUpOutside, .touchCancel])
         if !symbolsOn { letterButtons.append(b) }
         return b
@@ -361,14 +369,21 @@ class KeyboardViewController: UIInputViewController {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         popupView.frame = CGRect(x: x, y: y, width: w, height: h)
+        // An explicit shadow path keeps the shadow out of the offscreen
+        // render pass; without it every keystroke re-rasterizes the balloon.
+        popupView.layer.shadowPath = UIBezierPath(
+            roundedRect: popupView.bounds, cornerRadius: popupView.layer.cornerRadius
+        ).cgPath
         popupLabel.frame = popupView.bounds
         popupLabel.text = title
         popupView.isHidden = false
+        popupOwner = key
         CATransaction.commit()
     }
 
     private func hidePopup() {
         popupView.isHidden = true
+        popupOwner = nil
     }
 
     // MARK: - Shift without rebuilding (rebuilding mid-touch janks and can
@@ -407,8 +422,10 @@ class KeyboardViewController: UIInputViewController {
         refresh()
     }
 
-    @objc private func charReleased() {
-        hidePopup()
+    @objc private func charReleased(_ sender: UIButton) {
+        // With rolled typing the next key is already down and owns the
+        // balloon; only the owner's release may hide it.
+        if popupOwner === sender { hidePopup() }
     }
 
     @objc private func shiftTapped() {
@@ -542,6 +559,17 @@ private final class KeyButton: UIButton {
     }
     var pressedColor: UIColor?
 
+    /// Fast typing constantly lands in the gutters between keys, so each key
+    /// claims half of every gap around it (6pt between keys, 9pt between
+    /// rows), slightly over so float rounding can never leave a dead line.
+    /// Works together with KeyRow below: a stack view refuses hit-tests
+    /// outside its own bounds, so the rows must claim the gutters too.
+    var hitInsets = UIEdgeInsets(top: -5.5, left: -3.5, bottom: -5.5, right: -3.5)
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        return bounds.inset(by: hitInsets).contains(point)
+    }
+
     override var isHighlighted: Bool {
         didSet {
             guard let pressed = pressedColor else { return }
@@ -552,6 +580,16 @@ private final class KeyButton: UIButton {
                 UIView.animate(withDuration: 0.12) { self.backgroundColor = self.baseColor }
             }
         }
+    }
+}
+
+/// A key row that accepts hit-tests in the gutters above and below it, so the
+/// keys' expanded hit areas (KeyButton.hitInsets) are actually reachable
+/// there. Without this, UIStackView rejects any point outside its bounds
+/// before the keys are even asked.
+private final class KeyRow: UIStackView {
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        return bounds.insetBy(dx: 0, dy: -5.5).contains(point)
     }
 }
 

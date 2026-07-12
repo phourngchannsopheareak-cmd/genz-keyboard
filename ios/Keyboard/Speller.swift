@@ -459,8 +459,10 @@ enum Speller {
 
     /// spell("pteah") -> ["ផ្ទះ", ...] best first, deduped.
     static func spell(_ word: String, limit: Int = 3) -> [String] {
+        // Letters-only check as a character walk: this runs per keystroke and
+        // a regular expression would recompile its pattern every call.
         guard !word.isEmpty,
-              word.range(of: "^[a-zA-Z]+$", options: .regularExpression) != nil,
+              word.allSatisfy({ ($0 >= "a" && $0 <= "z") || ($0 >= "A" && $0 <= "Z") }),
               let sylls = syllabify(word) else { return [] }
 
         var beam = [Candidate(text: "", score: 0)]
